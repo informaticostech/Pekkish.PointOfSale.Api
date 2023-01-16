@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33213.308
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pekkish.PointOfSale.Api", "Pekkish.PointOfSale.Api\Pekkish.PointOfSale.Api.csproj", "{D5225F1E-A6DE-43EC-A8A4-7AADC304F783}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pekkish.PointOfSale.Wati", "Pekkish.PointOfSale.Wati\Pekkish.PointOfSale.Wati.csproj", "{51E4EDDE-E3FE-4C0B-A453-84684FA14077}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D5225F1E-A6DE-43EC-A8A4-7AADC304F783}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5225F1E-A6DE-43EC-A8A4-7AADC304F783}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5225F1E-A6DE-43EC-A8A4-7AADC304F783}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5225F1E-A6DE-43EC-A8A4-7AADC304F783}.Release|Any CPU.Build.0 = Release|Any CPU
+		{51E4EDDE-E3FE-4C0B-A453-84684FA14077}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{51E4EDDE-E3FE-4C0B-A453-84684FA14077}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{51E4EDDE-E3FE-4C0B-A453-84684FA14077}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{51E4EDDE-E3FE-4C0B-A453-84684FA14077}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8EA6BE92-321E-4679-B562-202E19A09766}
+	EndGlobalSection
+EndGlobal
