@@ -21,36 +21,52 @@ namespace Pekkish.PointOfSale.Wati
             _apiServerAddress = apiServerAddress;
             _apiKey = apiKey;
             _client = new HttpClient();
+
+            // Set the API key headers
+            _client.DefaultRequestHeaders.Add("Authorization", "Bearer " + _apiKey);
         }
 
         #region Wait.io API Call
         private async Task<dynamic> DataGet(string endpoint)
-        {
-            // Add the API key to the headers
-            _client.DefaultRequestHeaders.Add("Authorization", "Bearer " + _apiKey);
-
+        {            
             // Make a GET request to the specified endpoint
             var response = await _client.GetAsync(_apiServerAddress + endpoint);
 
             // Parse the JSON response
             var json = await response.Content.ReadAsStringAsync();
+            
             return JsonConvert.DeserializeObject(json);
         }
 
-        private async Task<HttpResponseMessage> DataPost(string endpoint, object data)
+        private async Task<HttpResponseMessage> DataPost(string endpoint, object? data)
         {
-            // Add the API key to the headers
-            _client.DefaultRequestHeaders.Add("Authorization", "Bearer " + _apiKey);
+            try
+            {
+                var response = new HttpResponseMessage();
+               
+                if (data != null)
+                {
+                    // Convert the data to a JSON string
+                    var json = JsonConvert.SerializeObject(data);
 
-            // Convert the data to a JSON string
-            var json = JsonConvert.SerializeObject(data);
+                    // Create a StringContent object with the JSON string
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            // Create a StringContent object with the JSON string
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            // Make a POST request to the specified endpoint with the JSON content
-            var response = await _client.PostAsync(_apiServerAddress + endpoint, content);
-            return response;
+                    // Make a POST request to the specified endpoint with the JSON content
+                    response = await _client.PostAsync(_apiServerAddress + endpoint, content);
+                }
+                else
+                {
+                    // Make a POST request to the specified endpoint
+                    response = await _client.PostAsync(_apiServerAddress + endpoint, null);
+                }
+                
+                return response;
+            }
+            catch(Exception ex) 
+            { 
+                throw new Exception(ex.Message, ex);
+            }
         }
         #endregion
 
@@ -58,18 +74,26 @@ namespace Pekkish.PointOfSale.Wati
         {
             var serializer = new JavaScriptSerializer();
             string endpoint = $"sendInteractiveListMessage?whatsappNumber=%2B{whatsAppNumber}";
-            
-            //string postData = serializer.Serialize(new
-            //{
-            //    Header = dto.Header,
-            //    Body = dto.Body,
-            //    Footer = dto.Footer,
-            //    ButtonText = dto.ButtonText,
-            //    Sections = dto.Sections
-            //});
-
-            //var result = await DataPost(endpoint, postData);
+                        
             var result = await DataPost(endpoint, dto);
+
+            return result;
+        }
+
+        public async Task<HttpResponseMessage> SessionMessageSend(string whatsAppNumber, string messageText)
+        {
+            var serializer = new JavaScriptSerializer();
+            string endpoint = $"sendSessionMessage/{whatsAppNumber}?messageText={messageText}";
+
+            var result = await DataPost(endpoint, null);
+
+            return result;
+        }
+        public async Task<HttpResponseMessage> SessionAssignOperator(string whatsAppNumber, string operatorEmail)
+        {            
+            string endpoint = $"assignOperator?email={operatorEmail}&whatsappNumber={whatsAppNumber}?";
+
+            var result = await DataPost(endpoint, null);
 
             return result;
         }

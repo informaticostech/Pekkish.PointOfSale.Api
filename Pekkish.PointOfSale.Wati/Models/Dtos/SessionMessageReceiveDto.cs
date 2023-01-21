@@ -9,7 +9,7 @@ namespace Pekkish.PointOfSale.Wati.Models.Dtos
     public class SessionMessageReceiveDto
     {
         public string Id { get; set; }
-        public DateTime? Created { get; set; }
+        public DateTime Created { get; set; }
         public string WhatsappMessageId { get; set; }
         public string ConversationId { get; set; }
         public string TicketId { get; set; }
