@@ -1,11 +1,13 @@
 ﻿using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
+using Microsoft.IdentityModel.Tokens;
 using Pekkish.PointOfSale.Api.Models.Wati;
 using Pekkish.PointOfSale.DAL.Entities;
 using Pekkish.PointOfSale.Wati;
 using Pekkish.PointOfSale.Wati.Models.Dtos;
 using System;
+using System.Numerics;
 using static Pekkish.PointOfSale.Api.Models.Wati.Constants;
 
 namespace Pekkish.PointOfSale.Api.Services
@@ -71,13 +73,15 @@ namespace Pekkish.PointOfSale.Api.Services
                                 //Convo Type Set Food Order
                                 await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.FoodOrder);
 
-                                //Create Food Order Record
+                                //Create Food Order Record (Init)
+                                await FoodOrderCreate(message, convo);
 
-                                //Food Status Set Receive Vendor Selection
-
+                                //Send Vendor List
+                                await MessageFoodOrderVendorSelection(convo.WaId);
                                 break;
 
                             case REPLY_CHAT_TO_HUMAN:
+                                #region Chat To Human
                                 //Convo Type Set Chat to Human
                                 await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.ChatToHuman);
 
@@ -89,10 +93,11 @@ namespace Pekkish.PointOfSale.Api.Services
 
                                 //Convo Status Set Completed
                                 await ConversationComplete(convo.Id);
-
+                                #endregion
                                 break;
 
                             case REPLY_BECOME_A_VENDOR:
+                                #region Become a vendor
                                 //Convo Type Set Become a Vendor
                                 await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.BecomeVendor);
 
@@ -104,7 +109,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
                                 //Convo Status Set Completed
                                 await ConversationComplete(convo.Id);
-
+                                #endregion
                                 break;
                         }
                     }
@@ -112,19 +117,8 @@ namespace Pekkish.PointOfSale.Api.Services
                     switch (convo.WatiConversationTypeId)
                     {
                         case (int)WatiConversationTypeEnum.FoodOrder:
-
-                            //Get Food Order Id (From Convo Record)
-
-
-                            //Evaluate Food Order Status
-
-                            //here
-
-                            
-                            switch (messageReply)
-                            {
-                                    
-                            }                            
+                            //Run Order Through
+                            await FoodOrderProcess(message, convo, messageReply);                                                                                    
                             break;
                     }
                 }
@@ -231,6 +225,145 @@ namespace Pekkish.PointOfSale.Api.Services
                 _context.SaveChanges();
             });            
         }
+        private async Task FoodOrderCreate(SessionMessageReceiveDto message, AppWatiConversation convo)
+        {
+            await Task.Run(() =>
+            {
+                //Create Order
+                AppWatiOrder order = new AppWatiOrder();
+                order.Name = message.SenderName;
+                order.WatiConversationId = convo.Id;
+                order.WatiOrderStatusId = (int)WatiFoodOrderStatusEnum.VendorSelection;
+                order.SubTotal = 0;
+                order.Total = 0;
+                order.CreatedDate = DateTime.Now;
+
+                _context.AppWatiOrders.Add(order);
+                _context.SaveChanges();
+
+                //Update Conversation with OrderId
+                AppWatiConversation appWatiConversation = _context.AppWatiConversations.Single(x => x.Id == convo.Id);
+                appWatiConversation.WatiOrderid = order.Id;
+                _context.SaveChanges();
+
+            });
+        }
+        private async Task FoodOrderStatusSet(int id, WatiFoodOrderStatusEnum status)
+        {
+            await Task.Run(() =>
+            {
+                AppWatiOrder order = _context.AppWatiOrders.Single(x => x.Id == id);
+                order.WatiOrderStatusId = (int)status;
+
+                _context.SaveChanges();
+            });
+        }
+        private async Task FoodOrderProcess(SessionMessageReceiveDto message, AppWatiConversation convo, string messageReply)
+        {
+            if (convo.WatiOrderid != null)
+            {
+                var order = _context.AppWatiOrders.Single(x => x.Id == (int)convo.WatiOrderid);
+                                
+                switch (order.WatiOrderStatusId)
+                {
+                    case (int)WatiFoodOrderStatusEnum.VendorSelection:
+                        #region Vendor Selection
+                        var vendor = (await _pointOfSaleService.VendorList()).Single(x=>x.Name== messageReply);
+                        var tenantId = (Guid)vendor.TenantId;
+                        var locationList = await _pointOfSaleService.LocationList(tenantId);
+                        var brandList = await _pointOfSaleService.BrandList(tenantId);
+
+                        order.TenantId = vendor.TenantId;
+                        order.TenantInfoId = vendor.Id;
+
+                        if (locationList.Count == 1)
+                        {
+                            order.LocationId = locationList[0].Id;
+                        }
+                        else
+                        { 
+                            //TODO: Location Selection
+                        }
+
+                        if (brandList.Count == 1)
+                        {
+                            //Set Brand
+                            order.CurrentBrand = brandList[0].Id;
+
+                            //Set Status to Category Selection
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelction);
+
+                            //Send Category List
+                            await MessageFoodOrderProductCategorySelection(convo.WaId, (Guid)order.TenantId, brandList[0]);
+                        }
+                        else
+                        {
+                            //Set Status to Brand Selection
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.BrandSelection);
+
+                            //Send Brand List
+                            await MessageFoodOrderBrandSelection(convo.WaId, tenantId, vendor);
+                        }
+
+                        _context.SaveChanges();
+
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.BrandSelection:                        
+                        var brand = (await _pointOfSaleService.BrandList((Guid)order.TenantId)).Single(x => x.Name == messageReply);                        
+                        var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
+
+                        order.CurrentBrand = brand.Id;
+
+                        if (categoryList.Count > 10)
+                        {
+
+                        }
+                        else
+                        {
+                            //Set Status to Brand Selection
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelction);
+
+                            //Send Category List
+                            await MessageFoodOrderProductCategorySelection(convo.WaId, (Guid)order.TenantId, brand);
+                        }
+
+
+                        _context.SaveChanges();
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.CategorySelction:
+                        var category = (await _pointOfSaleService.ProductCategoryList((int)order.CurrentBrand)).Single(x => x.Name == messageReply);
+                        var productList = await _pointOfSaleService.ProductList(category.Id);
+
+                        order.CurrentCategory = category.Id;
+
+                        if (productList.Count > 10)
+                        {
+
+                        }
+                        else
+                        {
+                            //Set Status to Brand Selection
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelction);
+
+                            //Send Category List
+                            await MessageFoodOrderProductSelection(convo.WaId, (Guid)order.TenantId, category);
+                        }
+
+
+                        _context.SaveChanges();
+                        break;
+                }
+
+            }
+            else
+            {
+                //TODO: Handle error
+            }
+        }
+
 
         #endregion
 
@@ -274,7 +407,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, welcome);
         }
-        private async Task MessageFoodOrder(string whatsappNumber)
+        private async Task MessageFoodOrderVendorSelection(string whatsappNumber)
         {
             var welcome = new InteractiveListMessageDto();
             var sectionList = new List<InteractiveListMessageSection>();
@@ -304,6 +437,99 @@ namespace Pekkish.PointOfSale.Api.Services
             welcome.Sections = sectionList;
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, welcome);
+        }
+        private async Task MessageFoodOrderBrandSelection(string whatsappNumber, Guid tenantId, AppTenantInfo tenant)
+        {
+            var message = new InteractiveListMessageDto();
+            var sectionList = new List<InteractiveListMessageSection>();
+            var rowList = new List<InteractivelistMessageSectionRow>();
+            var brandList = await _pointOfSaleService.BrandList(tenantId);
+
+            message.Header = tenant.NameShort;
+            message.Body = "Please select from the following brands:";
+            message.Footer = "";
+            message.ButtonText = "Choose Brand";
+
+            foreach (var item in brandList)
+            {
+                rowList.Add(new InteractivelistMessageSectionRow
+                {
+                    Title = item.Name,
+                    Description = ""
+                });
+            }
+
+            sectionList.Add(new InteractiveListMessageSection
+            {
+                Title = $"Selection",
+                Rows = rowList
+            });
+
+            message.Sections = sectionList;
+
+            var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
+        }
+        private async Task MessageFoodOrderProductCategorySelection(string whatsappNumber, Guid tenantId, AppBrand brand)
+        {
+            var message = new InteractiveListMessageDto();
+            var sectionList = new List<InteractiveListMessageSection>();
+            var rowList = new List<InteractivelistMessageSectionRow>();
+            var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
+
+            message.Header = brand.NameShort;
+            message.Body = "Please select from the following categories:";
+            message.Footer = "";
+            message.ButtonText = "Choose Category";
+
+            foreach (var item in categoryList)
+            {
+                rowList.Add(new InteractivelistMessageSectionRow
+                {
+                    Title = (item.ExternalAppName.IsNullOrEmpty()) ? item.Name : item.ExternalAppName,
+                    Description = ""
+                });
+            }
+
+            sectionList.Add(new InteractiveListMessageSection
+            {
+                Title = $"Selection",
+                Rows = rowList
+            });
+
+            message.Sections = sectionList;
+
+            var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
+        }
+        private async Task MessageFoodOrderProductSelection(string whatsappNumber, Guid tenantId, AppProductCategory category)
+        {
+            var message = new InteractiveListMessageDto();
+            var sectionList = new List<InteractiveListMessageSection>();
+            var rowList = new List<InteractivelistMessageSectionRow>();
+            var productList = await _pointOfSaleService.ProductList(category.Id);
+
+            message.Header = category.Name;
+            message.Body = "Please select from the following Products:";
+            message.Footer = "";
+            message.ButtonText = "Choose Product";
+
+            foreach (var item in productList)
+            {
+                rowList.Add(new InteractivelistMessageSectionRow
+                {
+                    Title = (item.Name.Length > 24) ? item.Name.Substring(0,24) : item.Name,
+                    Description = (item.Name.Length > 24) ? item.Name :  ""    // (item.Description.IsNullOrEmpty()) ? "" : item.Description  
+                });
+            }
+
+            sectionList.Add(new InteractiveListMessageSection
+            {
+                Title = $"Selection",
+                Rows = rowList
+            });
+
+            message.Sections = sectionList;
+
+            var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
         }
         private async Task MessageWebsiteVendor(string whatsappNumber)
         {
