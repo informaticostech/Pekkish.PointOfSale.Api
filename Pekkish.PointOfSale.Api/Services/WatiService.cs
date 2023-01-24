@@ -8,6 +8,7 @@ using Pekkish.PointOfSale.Wati;
 using Pekkish.PointOfSale.Wati.Models.Dtos;
 using System;
 using System.Numerics;
+using System.Reflection.PortableExecutable;
 using static Pekkish.PointOfSale.Api.Models.Wati.Constants;
 
 namespace Pekkish.PointOfSale.Api.Services
@@ -38,12 +39,14 @@ namespace Pekkish.PointOfSale.Api.Services
 
             if (message.ListReply != null)
                 messageReply = message.ListReply.Title;
+            else
+                messageReply = message.Text;
 
             //Save Message
             var savedMessage = await MessageReceiveSave(message);
 
             //Only do automated when there is not a current operator assigned
-            if (message.AssignedId != "null" || message.AssignedId == null)
+            if (message.AssignedId == null)
             {
                 //Check Conversation Exists
                 var conversationActiveList = await ConversationListAcive(message.WaId);
@@ -172,6 +175,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 var result = (from list in _context.AppWatiConversations
                               where list.ExpireDate > DateTime.Now
                               where list.WatiConversationStatusId != (int)WatiConversationStatusEnum.Completed
+                              where list.WaId == whatsAppNumber
                               select list).ToList();
 
                 return result;                
@@ -291,10 +295,10 @@ namespace Pekkish.PointOfSale.Api.Services
                             order.CurrentBrand = brandList[0].Id;
 
                             //Set Status to Category Selection
-                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelction);
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelection);
 
                             //Send Category List
-                            await MessageFoodOrderProductCategorySelection(convo.WaId, (Guid)order.TenantId, brandList[0]);
+                            await MessageFoodOrderProductCategorySelectionList(convo.WaId, brandList[0]);
                         }
                         else
                         {
@@ -310,50 +314,87 @@ namespace Pekkish.PointOfSale.Api.Services
                         #endregion
                         break;
 
-                    case (int)WatiFoodOrderStatusEnum.BrandSelection:                        
-                        var brand = (await _pointOfSaleService.BrandList((Guid)order.TenantId)).Single(x => x.Name == messageReply);                        
-                        var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
+                    case (int)WatiFoodOrderStatusEnum.BrandSelection:
+                        #region Brand Selection
+                        var brand = (await _pointOfSaleService.BrandList((Guid)order.TenantId)).Single(x => x.Name == messageReply);
 
-                        order.CurrentBrand = brand.Id;
-
-                        if (categoryList.Count > 10)
-                        {
-
-                        }
-                        else
-                        {
-                            //Set Status to Brand Selection
-                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelction);
-
-                            //Send Category List
-                            await MessageFoodOrderProductCategorySelection(convo.WaId, (Guid)order.TenantId, brand);
-                        }
-
-
-                        _context.SaveChanges();
+                        await ProductCategorySelctionFunction(convo, order, brand);
+                        #endregion
                         break;
 
-                    case (int)WatiFoodOrderStatusEnum.CategorySelction:
+                    case (int)WatiFoodOrderStatusEnum.CategorySelection:
                         var category = (await _pointOfSaleService.ProductCategoryList((int)order.CurrentBrand)).Single(x => x.Name == messageReply);
-                        var productList = await _pointOfSaleService.ProductList(category.Id);
 
-                        order.CurrentCategory = category.Id;
+                        await ProductSelctionFunction(convo, order, category);
+                        break;
 
-                        if (productList.Count > 10)
+                    case (int)WatiFoodOrderStatusEnum.ProductSelection:
+                        #region Product Selection
+
+                        if (messageReply == REPLY_BACK_CATEGORY)
                         {
-
+                            var brandFromProductSelection = await _pointOfSaleService.BrandItemGet((int)order.CurrentBrand);
+                            await ProductCategorySelctionFunction(convo, order, brandFromProductSelection);
                         }
                         else
                         {
-                            //Set Status to Brand Selection
-                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelction);
+                            var product = (await _pointOfSaleService.ProductList((int)order.CurrentCategory)).Single(x => x.Name == messageReply);
 
-                            //Send Category List
-                            await MessageFoodOrderProductSelection(convo.WaId, (Guid)order.TenantId, category);
+                            order.CurrentProduct = product.Id;
+
+                            //Set Status to Brand Selection
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductAddToCardConfirm);
+
+                            //Send Product Message
+                            await MessageFoodOrderProductConfirmation(convo.WaId, product);
+
+                            _context.SaveChanges();
+                        }
+                        
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductSelectionText:
+                        #region Product Selection Text
+                        int productSelection = Convert.ToInt32(messageReply);
+
+                        if (productSelection == 0)
+                        {
+                            var brandFromProductSelection = await _pointOfSaleService.BrandItemGet((int)order.CurrentBrand);
+                            await ProductCategorySelctionFunction(convo, order, brandFromProductSelection);
+                        }
+                        else
+                        {
+                            var productFromText = (await _pointOfSaleService.ProductList((int)order.CurrentCategory))[productSelection - 1];
+
+                            //Set Status to Brand Selection
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductAddToCardConfirm);
+
+                            //Send Product Message
+                            await MessageFoodOrderProductConfirmation(convo.WaId, productFromText);
+
+                            _context.SaveChanges();
+                        }
+                        
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductAddToCardConfirm:
+                        var productFromAddToCart = await _pointOfSaleService.ProductItemGet((int)order.CurrentProduct);
+                        var categoryFromAddToCart = await _pointOfSaleService.ProductCategoryItemGet((int)order.CurrentCategory);
+                            
+                        switch (messageReply)
+                        {
+                            case REPLY_ADD_TO_CART:
+
+                                break;
+
+                            case REPLY_CANCEL:
+                                //Send Product Selection
+                                await ProductSelctionFunction(convo, order, categoryFromAddToCart);
+                                break;
                         }
 
-
-                        _context.SaveChanges();
                         break;
                 }
 
@@ -469,7 +510,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
         }
-        private async Task MessageFoodOrderProductCategorySelection(string whatsappNumber, Guid tenantId, AppBrand brand)
+        private async Task MessageFoodOrderProductCategorySelectionList(string whatsappNumber, AppBrand brand)
         {
             var message = new InteractiveListMessageDto();
             var sectionList = new List<InteractiveListMessageSection>();
@@ -485,7 +526,7 @@ namespace Pekkish.PointOfSale.Api.Services
             {
                 rowList.Add(new InteractivelistMessageSectionRow
                 {
-                    Title = (item.ExternalAppName.IsNullOrEmpty()) ? item.Name : item.ExternalAppName,
+                    Title = item.Name,          // (item.ExternalAppName.IsNullOrEmpty()) ? item.Name : item.ExternalAppName,
                     Description = ""
                 });
             }
@@ -500,11 +541,31 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
         }
-        private async Task MessageFoodOrderProductSelection(string whatsappNumber, Guid tenantId, AppProductCategory category)
+        private async Task MessageFoodOrderProductCategorySelectionText(string whatsappNumber, AppBrand brand)
+        {
+            string message;
+            var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
+
+            message = brand.Name.Replace('&', '_').ToUpper();
+            message += "\r\n";
+            message += "\r\n";
+            message += "Please select from the following categories:";
+            message += "\r\n";
+
+            for (int c = 0; c < categoryList.Count; c++)
+            {
+                message += $"{c + 1} {categoryList[c].Name}";
+                message += "\r\n";
+            }
+
+            var result = await _wati.SessionMessageSend(whatsappNumber, message);
+        }
+        private async Task MessageFoodOrderProductSelectionList(string whatsappNumber, AppProductCategory category)
         {
             var message = new InteractiveListMessageDto();
             var sectionList = new List<InteractiveListMessageSection>();
-            var rowList = new List<InteractivelistMessageSectionRow>();
+            var rowCategoryList = new List<InteractivelistMessageSectionRow>();
+            var rowProductList = new List<InteractivelistMessageSectionRow>();
             var productList = await _pointOfSaleService.ProductList(category.Id);
 
             message.Header = category.Name;
@@ -512,24 +573,149 @@ namespace Pekkish.PointOfSale.Api.Services
             message.Footer = "";
             message.ButtonText = "Choose Product";
 
-            foreach (var item in productList)
+            //Back to Categories
+            rowCategoryList.Add( new InteractivelistMessageSectionRow 
             {
-                rowList.Add(new InteractivelistMessageSectionRow
-                {
-                    Title = (item.Name.Length > 24) ? item.Name.Substring(0,24) : item.Name,
-                    Description = (item.Name.Length > 24) ? item.Name :  ""    // (item.Description.IsNullOrEmpty()) ? "" : item.Description  
-                });
-            }
+                Title = REPLY_BACK_CATEGORY,
+                Description = ""
+            });
 
             sectionList.Add(new InteractiveListMessageSection
             {
-                Title = $"Selection",
-                Rows = rowList
+                Title = $"Categories",
+                Rows = rowCategoryList
+            });
+
+            //Products
+            foreach (var item in productList)
+            {
+                rowProductList.Add(new InteractivelistMessageSectionRow
+                {
+                    Title = item.Name, 
+                    Description = $"R{item.Price}"
+                });
+            }
+
+            //Complile Lists
+            sectionList.Add(new InteractiveListMessageSection
+            {
+                Title = $"Products",
+                Rows = rowProductList
             });
 
             message.Sections = sectionList;
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
+        }
+        private async Task MessageFoodOrderProductSelectionText(string whatsappNumber, AppProductCategory category)
+        {
+            string message = "";
+            var productList = await _pointOfSaleService.ProductList(category.Id);
+
+            message = category.Name.Replace('&', '_').ToUpper();
+            message += "\r\n";
+            message += "\r\n";
+            message += "Categories:";
+            message += "\r\n";
+            message += $"0 {REPLY_BACK_CATEGORY}";
+            message += "\r\n";
+            message += "\r\n";
+            message += "Products:";
+            message += "\r\n";
+
+            for (int c = 0; c < productList.Count; c++) 
+            {
+                message += $"{c + 1} {productList[c].Name} - R{productList[c].Price}";
+                message += "\r\n";
+            }
+
+            var result = await _wati.SessionMessageSend(whatsappNumber, message);
+        }
+        private async Task MessageFoodOrderProductConfirmation(string whatsappNumber, AppProduct product)
+        {
+            var messageMedia = new InteractiveButtonsMessageMediaDto();
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerMedia = new InteractiveButtonMessageHeaderMedia();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var media = new InteractiveButtonHeaderMedia();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+
+            #region Buttons
+            buttonList.Add(new InteractiveButtonMessageButton()
+            {
+                Text = REPLY_ADD_TO_CART
+            });
+
+            buttonList.Add(new InteractiveButtonMessageButton()
+            {
+                Text = REPLY_CANCEL
+            });
+            #endregion
+
+            #region Determine if image is available
+            var isImage = false;
+            if(product.PekkishProductId != null)
+            {
+                var pekkishProduct = _context.PekkishProducts.SingleOrDefault(x => x.Id == product.PekkishProductId);
+
+                if (pekkishProduct != null)
+                {
+                    if(pekkishProduct.ImageUrl!= null)
+                    {
+                        media.Url = pekkishProduct.ImageUrl;
+                        isImage = true;
+                    }                    
+                }                
+            }
+            #endregion
+
+            if (isImage)
+            {
+                headerMedia.Type = "Image";
+                headerMedia.Media = media;
+                messageMedia.Header = headerMedia;
+
+                messageMedia.Body += $"*{product.Name}*";
+                messageMedia.Body += "\r\n";
+
+                if (!product.Description.IsNullOrEmpty())
+                {
+                    messageMedia.Body += "\r\n";
+                    messageMedia.Body += product.Description;
+                    messageMedia.Body += "\r\n";
+                    messageMedia.Body += "\r\n";                    
+                }
+
+                messageMedia.Body += $"*R {product.Price}*";
+
+                messageMedia.Footer = "";
+
+                messageMedia.Buttons = buttonList;
+
+                var result = await _wati.InteractiveButtonsMessageMediaSend(whatsappNumber, messageMedia);
+            }
+            else
+            {
+                headerText.Type = "Text";
+                headerText.Text = product.Name;
+                messageText.Header = headerText;                
+
+                if (!product.Description.IsNullOrEmpty())
+                {
+                    messageText.Body += "\r\n";
+                    messageText.Body += product.Description;
+                    messageText.Body += "\r\n";
+                    messageText.Body += "\r\n";
+                }
+
+                messageText.Body += $"*R {product.Price}*";
+
+                messageText.Footer = "";
+
+                messageText.Buttons = buttonList;
+
+                var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+            }            
         }
         private async Task MessageWebsiteVendor(string whatsappNumber)
         {
@@ -542,70 +728,67 @@ namespace Pekkish.PointOfSale.Api.Services
             await _wati.SessionMessageSend(whatsappNumber, "A member of our team has been assigned to this chat. How can we assit you?");
 
             //Todo: Email Customer Service.
-        }
-        private async Task MessageButtonMesageTest(string whatsappNumber)
-        {
-            InteractiveButtonsMessageDto message = new InteractiveButtonsMessageDto();
-
-            var header = new InteractiveButtonMessageHeader();
-            header.Type = "Text";
-            header.Text = "Header Text";
-            //header.Media = new InteractiveButtonHeaderMedia { };
-
-            message.Header = header;
-            message.Body = "Mesage Body";
-            message.Footer = "Message Footer";
-
-            var buttonList = new List<InteractiveButtonMessageButton>();
-            buttonList.Add(new InteractiveButtonMessageButton
-            {
-                 Text = whatsappNumber
-            });
-
-            
-
-            InteractiveListMessageDto welcome = new InteractiveListMessageDto();
-            List<InteractiveListMessageSection> sectionList = new List<InteractiveListMessageSection>();
-            List<InteractivelistMessageSectionRow> rowList = new List<InteractivelistMessageSectionRow>();
-
-            welcome.Header = "Welcome to Pekkish";
-            welcome.Body = "How can we help you today?";
-            welcome.Footer = "Pekkish BOT (Test)";
-            welcome.ButtonText = "Choose Option";
-
-            rowList.Add(new InteractivelistMessageSectionRow
-            {
-                Title = "Order Food",
-                Description = ""
-            });
-
-            rowList.Add(new InteractivelistMessageSectionRow
-            {
-                Title = "Chat to a human",
-                Description = "Chat to a member our team"
-            });
-
-            rowList.Add(new InteractivelistMessageSectionRow
-            {
-                Title = "Become a food vendor",
-                Description = "Start your own Online Store / online Point of Sale"
-            });
-
-            sectionList.Add(new InteractiveListMessageSection
-            {
-                Title = "Selection",
-                Rows = rowList
-            });
-
-            welcome.Sections = sectionList;
-
-            var result = await _wati.InteractiveListMessageSend(whatsappNumber, welcome);
-        }
+        }        
         #endregion
 
         private async Task SessionAssignCustomerService(string whatsappNumber)
         {
             await _wati.SessionAssignOperator(whatsappNumber, _watiConfig.DefaultOperatorEmail);
+        }
+
+        private async Task ProductCategorySelctionFunction(AppWatiConversation convo, AppWatiOrder order, AppBrand brand)
+        {            
+            var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
+
+            order.CurrentBrand = brand.Id;
+
+            if (categoryList.Count > 10)
+            {
+                //Set Status to Brand Selection
+                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelectionText);
+
+                //Send Category List
+                await MessageFoodOrderProductCategorySelectionText(convo.WaId, brand);
+            }
+            else
+            {
+                //Set Status to Brand Selection
+                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelection);
+
+                //Send Category List
+                await MessageFoodOrderProductCategorySelectionList(convo.WaId, brand);
+            }
+
+            _context.SaveChanges();
+        }
+        private async Task ProductSelctionFunction(AppWatiConversation convo, AppWatiOrder order, AppProductCategory category)
+        {            
+            var productList = await _pointOfSaleService.ProductList(category.Id);
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+
+            order.CurrentCategory = category.Id;
+            
+            //Send Category List
+            if (productList.Count > 9)
+            {
+                //Set Status to CAtegory Selection Text
+                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductSelectionText);
+
+                //Send Product Message Text
+                await MessageFoodOrderProductSelectionText(convo.WaId, category);
+            }
+            else
+            {
+                //Set Status to Product Selection
+                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductSelection);
+
+                //Send Product Message
+                await MessageFoodOrderProductSelectionList(convo.WaId, category);
+            }
+
+            _context.SaveChanges();
         }
     }
 }

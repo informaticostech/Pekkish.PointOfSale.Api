@@ -6,18 +6,30 @@ using System.Threading.Tasks;
 
 namespace Pekkish.PointOfSale.Wati.Models.Dtos
 {
-    public class InteractiveButtonsMessageDto
+    public class InteractiveButtonsMessageTextDto
     {
-        public InteractiveButtonMessageHeader Header { get; set; } = new InteractiveButtonMessageHeader();
+        public InteractiveButtonMessageHeaderText Header { get; set; } = new InteractiveButtonMessageHeaderText();
         public string Body { get; set; } = string.Empty;
         public string Footer { get; set; } = string.Empty;
-        public InteractiveButtonMessageButton Buttons { get; set; } = new InteractiveButtonMessageButton();
+        public List<InteractiveButtonMessageButton> Buttons { get; set; } = new List<InteractiveButtonMessageButton>();
+    }
+    public class InteractiveButtonsMessageMediaDto
+    {
+        public InteractiveButtonMessageHeaderMedia Header { get; set; } = new InteractiveButtonMessageHeaderMedia();
+        public string Body { get; set; } = string.Empty;
+        public string Footer { get; set; } = string.Empty;
+        public List<InteractiveButtonMessageButton> Buttons { get; set; } = new List<InteractiveButtonMessageButton>();
     }
 
-    public class InteractiveButtonMessageHeader
+    public class InteractiveButtonMessageHeaderText
     {
         public string Type { get; set; } = string.Empty;
-        public string Text { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;        
+    }
+    public class InteractiveButtonMessageHeaderMedia
+    {
+        public string Type { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty; //Test for removal
         public InteractiveButtonHeaderMedia Media { get; set; } = new InteractiveButtonHeaderMedia();
     }
 
