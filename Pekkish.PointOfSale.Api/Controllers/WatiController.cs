@@ -32,6 +32,21 @@ namespace Pekkish.PointOfSale.Api.Controllers
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
             }
-        }        
+        }
+        [HttpGet("VendorList")]
+        private async Task<IActionResult> VendorList()
+        {
+            try
+            {
+                var result = await _pointOfSaleService.VendorList();
+
+                return Ok(result);
+
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
     }
 }

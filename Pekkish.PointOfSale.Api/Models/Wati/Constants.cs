@@ -15,6 +15,7 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public const string REPLY_FOOD_ORDER = "Order Food";
         public const string REPLY_CHAT_TO_HUMAN = "Chat to a human";
         public const string REPLY_BECOME_A_VENDOR = "Become a food vendor";
+        public const string REPLY_VENDOR_ORDER_FOOD = "Feed Me!";
         public const string REPLY_ADD_TO_CART = "Add to Cart";
         public const string REPLY_CANCEL = "Cancel";
         public const string REPLY_BACK_CATEGORY = "Go back to Category list";
@@ -24,12 +25,33 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public const string REPLY_CANCEL_ORDER = "Cancel Order";
         public const string REPLY_YES = "Yes";
         public const string REPLY_NO = "No";
-
-
+        public const string REPLY_PAYMENT_CASH = "Cash";
+        public const string REPLY_PAYMENT_CARD = "Card";
+        public const string REPLY_PAYMENT_EFT = "EFT";  
+        
         public enum WatiConversationStatusEnum { Initialised = 1, InProgress, Completed, Expired, Cancelled }
         public enum WatiConversationTypeEnum { FoodOrder = 1, ChatToHuman, BecomeVendor }
         public enum WatiFoodOrderStatusEnum { VendorSelection = 1, CategorySelection, ProductSelection, ProductAddToCardConfirm, ProductExtraSelection, 
-            ProductMoreConfirm, OrderConfirm, OrderDateConfirm, OrderFulfillmentConfirm, OrderPayMethodConfirm, OrderSeastingAreaConfirm, BrandSelection, 
-            CategorySelectionText, ProductSelectionText, QuantityConfirm, CancelConfirm, Cancelled }
+            ProductMoreCheckoutConfirm, VendorLanding, OrderDateConfirm, OrderFulfillmentConfirm, OrderPayMethodConfirm, OrderSeastingAreaConfirm, BrandSelection, 
+            CategorySelectionText, ProductSelectionText, QuantityConfirm, CancelConfirm, Cancelled, Completed }
+
+        public enum PosOrderStatusEnum
+        {
+            Pending = 1, PartiallyAccepted, Accepted, ReadyForPickup, Rejected, CancelledByBusiness,
+            CancelledByCustomer, Completed
+        }
+        public enum PosPaymentTypeEnum
+        {
+            Cash = 1, Card, Online, EFT, Other, Multiple, PayLater
+        }
+        public enum PosSalesChannelEnum
+        {
+            Pekkish = 1, InStore, WhatsApp, UberEats, MrDFood, BoltFood, Instagram, PhoneCall,
+            Facebook, TikTok, WhatsAppPekkish
+        }
+        public enum PosFulfillmentTypeEnum
+        {
+            Pickup = 1, Delivery, SitDown
+        }
     }
 }

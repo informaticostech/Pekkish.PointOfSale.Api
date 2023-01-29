@@ -7,8 +7,10 @@ using Pekkish.PointOfSale.DAL.Entities;
 using Pekkish.PointOfSale.Wati;
 using Pekkish.PointOfSale.Wati.Models.Dtos;
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Reflection.PortableExecutable;
+using System.Runtime.CompilerServices;
 using static Pekkish.PointOfSale.Api.Models.Wati.Constants;
 using static System.Net.Mime.MediaTypeNames;
 
@@ -46,84 +48,89 @@ namespace Pekkish.PointOfSale.Api.Services
             //Save Message
             var savedMessage = await MessageReceiveSave(message);
 
-            //Only do automated when there is not a current operator assigned
-            if (message.AssignedId == null)
+            //Restrict Access
+            if (message.WaId == "27839777068")
             {
-                //Check Conversation Exists
-                var conversationActiveList = await ConversationListAcive(message.WaId);
-
-                if (conversationActiveList.Count == 0)
+                //Only do automated when there is not a current operator assigned
+                if (message.AssignedId == null)
                 {
-                    //Create Conversation
-                    var convo = await ConversationCreate(message);
+                    //Check Conversation Exists
+                    var conversationActiveList = await ConversationListAcive(message.WaId);
 
-                    //Set Conversation Status
-                    await ConversationStatusSet(convo.Id, WatiConversationStatusEnum.Initialised);
-
-                    //Send Welcome
-                    await MessageWelcome(message.WaId);
-                }
-                else
-                {
-                    //For Now - Focus on Food. More Work Needed for multiple concurrent conversations (New Vendor, Speak to Human)
-                    var convo = conversationActiveList[0];
-
-                    //Set Conversation Type Set
-                    if (convo.WatiConversationTypeId == null)
+                    if (conversationActiveList.Count == 0)
                     {
-                        switch (messageReply)
+                        //Create Conversation
+                        var convo = await ConversationCreate(message);
+
+                        //Set Conversation Status
+                        await ConversationStatusSet(convo.Id, WatiConversationStatusEnum.Initialised);
+
+                        //Send Welcome
+                        await MessageWelcome(message.WaId);
+                    }
+                    else
+                    {
+                        //For Now - Focus on Food. More Work Needed for multiple concurrent conversations (New Vendor, Speak to Human)
+                        var convo = conversationActiveList[0];
+
+                        //Set Conversation Type Set
+                        if (convo.WatiConversationTypeId == null)
                         {
-                            case REPLY_FOOD_ORDER:
-                                //Convo Type Set Food Order
-                                await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.FoodOrder);
+                            switch (messageReply)
+                            {
+                                case REPLY_FOOD_ORDER:
+                                    //Convo Type Set Food Order
+                                    await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.FoodOrder);
 
-                                //Create Food Order Record (Init)
-                                await FoodOrderCreate(message, convo);
+                                    //Create Food Order Record (Init)
+                                    await FoodOrderCreate(message, convo);
 
-                                //Send Vendor List
-                                await MessageFoodOrderVendorSelection(convo.WaId);
-                                break;
+                                    //Send Vendor List
+                                    await MessageFoodOrderVendorSelection(convo.WaId);
+                                    break;
 
-                            case REPLY_CHAT_TO_HUMAN:
-                                #region Chat To Human
-                                //Convo Type Set Chat to Human
-                                await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.ChatToHuman);
+                                case REPLY_CHAT_TO_HUMAN:
+                                    #region Chat To Human
+                                    //Convo Type Set Chat to Human
+                                    await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.ChatToHuman);
 
-                                //Send Vendor Website
-                                await MessageChatToHumanRespone(message.WaId);
+                                    //Send Vendor Website
+                                    await MessageChatToHumanRespone(message.WaId);
 
-                                //Assign to Customer Service                                
-                                await SessionAssignCustomerService(message.WaId);
+                                    //Assign to Customer Service                                
+                                    await SessionAssignCustomerService(message.WaId);
 
-                                //Convo Status Set Completed
-                                await ConversationComplete(convo.Id);
-                                #endregion
-                                break;
+                                    //Convo Status Set Completed
+                                    await ConversationComplete(convo.Id);
+                                    #endregion
+                                    break;
 
-                            case REPLY_BECOME_A_VENDOR:
-                                #region Become a vendor
-                                //Convo Type Set Become a Vendor
-                                await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.BecomeVendor);
+                                case REPLY_BECOME_A_VENDOR:
+                                    #region Become a vendor
+                                    //Convo Type Set Become a Vendor
+                                    await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.BecomeVendor);
 
-                                //Send Vendor Website
-                                await MessageWebsiteVendor(message.WaId);
-                                
-                                //Convo Assign to Customer Service
-                                await SessionAssignCustomerService(message.WaId);
+                                    //Send Vendor Website
+                                    await MessageWebsiteVendor(message.WaId);
 
-                                //Convo Status Set Completed
-                                await ConversationComplete(convo.Id);
-                                #endregion
+                                    //Convo Assign to Customer Service
+                                    await SessionAssignCustomerService(message.WaId);
+
+                                    //Convo Status Set Completed
+                                    await ConversationComplete(convo.Id);
+                                    #endregion
+                                    break;
+                            }
+                        }
+
+                        switch (convo.WatiConversationTypeId)
+                        {
+                            case (int)WatiConversationTypeEnum.FoodOrder:
+                                //Run Order Through
+                                if (messageReply != REPLY_FOOD_ORDER)
+                                    await FoodOrderProcess(message, convo, messageReply);
                                 break;
                         }
-                    }
-
-                    switch (convo.WatiConversationTypeId)
-                    {
-                        case (int)WatiConversationTypeEnum.FoodOrder:
-                            //Run Order Through
-                            await FoodOrderProcess(message, convo, messageReply);                                                                                    
-                            break;
                     }
                 }
             }
@@ -243,6 +250,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 order.SubTotal = 0;
                 order.Total = 0;
                 order.CreatedDate = DateTime.Now;
+                order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Pickup;  //TODO manage Delivery
 
                 _context.AppWatiOrders.Add(order);
                 _context.SaveChanges();
@@ -280,11 +288,23 @@ namespace Pekkish.PointOfSale.Api.Services
                 return order;
             });
         }
+        private async Task<List<AppWatiOrderDetail>> FoodOrderCartGet(int orderId)
+        {
+            return await Task.Run(() =>
+            {
+                var result = (from Detail in _context.AppWatiOrderDetails
+                              where Detail.WatiOrderId == orderId
+                              select Detail).ToList();
+
+                return result;
+            });
+        }
         private async Task<decimal> FoodOrderTotalsGet(int orderId)
         {
             return await Task.Run(() =>
             {
                 var result = (from list in _context.AppWatiOrderDetails
+                              where list.WatiOrderId == orderId
                               select new
                               {
                                   Total = list.Quantity * list.Amount
@@ -316,8 +336,37 @@ namespace Pekkish.PointOfSale.Api.Services
                         #region Vendor Selection
                         var tenant = (await _pointOfSaleService.VendorList()).Single(x=>x.Name== messageReply);
 
-                        await BrandOrCategorySelectionFunction(convo, order, tenant);
+                        order.TenantId = tenant.TenantId;
+                        _context.SaveChanges();
+
+                        //Set Status Vendor Landing
+                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
+
+                        //Message welcome message
+                        await MessageFoodOrderVendorWelcome(convo.WaId, (Guid)tenant.TenantId, tenant);
+                                                
                         #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.VendorLanding:
+
+                        var tenantFromVendorLanding = _context.AppTenantInfos.Single(x => x.TenantId == order.TenantId);
+
+                        switch (messageReply)
+                        {
+                            case REPLY_VENDOR_ORDER_FOOD:
+                                //Brand or Category Selection
+                                await BrandOrCategorySelectionFunction(convo, order, tenantFromVendorLanding);
+                                break;
+
+                            case REPLY_CANCEL:
+                                //Set status Vendor Selction
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorSelection);
+
+                                //Send Vendor List
+                                await MessageFoodOrderVendorSelection(convo.WaId);
+                                break;
+                        }
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.BrandSelection:
@@ -381,6 +430,7 @@ namespace Pekkish.PointOfSale.Api.Services
                             //Send Product Message
                             await MessageFoodOrderProductConfirmation(convo.WaId, productFromText);
 
+                            order.CurrentProduct = productFromText.Id;
                             _context.SaveChanges();
                         }
                         
@@ -418,25 +468,39 @@ namespace Pekkish.PointOfSale.Api.Services
                         var orderFromQuantityConfirm = await FoodOrderDetailCreate(order.Id, productFromQuantityConfirm, quntity);
 
                         //Set Status to Category Selection
-                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreConfirm);
+                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
 
                         //Send Message Add More Products
                         await MessageFoodOrderMoreProductsConfirmation(convo.WaId, productFromQuantityConfirm, orderFromQuantityConfirm);
                         #endregion
                         break;
 
-                    case (int)WatiFoodOrderStatusEnum.ProductMoreConfirm:
-
+                    case (int)WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm:
+                        
+                        #region Product More Checkout Confirm
                         switch (messageReply)
                         {
                             case REPLY_ADD_MORE_PRODUCTS:
+                                //Brand or Category Selection
                                 var tentantFromProductMoreConfirm = _context.AppTenantInfos.Single(x => x.Id == order.TenantInfoId);
 
                                 await BrandOrCategorySelectionFunction(convo, order, tentantFromProductMoreConfirm);
                                 break;
 
                             case REPLY_VIEW_CART:
+                                //Set Status View Cart
+                                //Status alread here
 
+                                //Send Message View Cart
+                                await MessageFoodOrderMoreProductsConfirmationRemixViewCart(convo.WaId, order);
+                                break;
+
+                            case REPLY_CHECKOUT:
+                                //Set Status View Cart
+                                //await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.OrderConfirm);
+
+                                //Send Message View Cart
+                                await MessageFoodOrderMoreProductsConfirmationRemixCheckOut(convo.WaId, order);
                                 break;
 
                             case REPLY_CANCEL_ORDER:                                                                
@@ -447,14 +511,30 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await MessageFoodOrderCancelConfirmation(convo.WaId, order);                                
                                 break;
 
+                            case REPLY_YES:
+                                //Set Status Pay Meth Confirm
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.OrderPayMethodConfirm);
+
+                                //Send Message Pay Method Confirm
+                                await MessageFoodOrderPayMethodConfirm(convo.WaId);
+
+                                break;
+
+                            case REPLY_NO:
+                                //Senn Message Confirm Order
+                                await MessageFoodOrderMoreProductsConfirmationRemixReplyNo(convo.WaId, order);
+                                break;
+
                             default:
                                 await _wati.SessionMessageSend(convo.WaId, "Invalid response. Please try again");
                                 break;
                         }
+                        #endregion
+
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.CancelConfirm:
-
+                        #region CancelConfirm
                         switch (messageReply)
                         {
                             case REPLY_YES:
@@ -473,12 +553,49 @@ namespace Pekkish.PointOfSale.Api.Services
 
                             case REPLY_NO:
                                 //Set Status to Category Selection
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreConfirm);
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
 
                                 //Send Message Add More Products (Armand Van Helden REMIX)
-                                await MessageFoodOrderMoreProductsConfirmationRemix(convo.WaId, order);
+                                await MessageFoodOrderMoreProductsConfirmationRemixReplyNo(convo.WaId, order);
                                 break;
                         }
+                        #endregion
+                        break;
+                    
+                    case (int)WatiFoodOrderStatusEnum.OrderPayMethodConfirm:
+
+                        #region Paymethod Confirm
+                        switch (messageReply)
+                        {
+                            case REPLY_PAYMENT_CASH:
+                                order.PaymentMethodId = (int)PosPaymentTypeEnum.Cash;
+                                break;
+
+                            case REPLY_PAYMENT_CARD:
+                                order.PaymentMethodId = (int)PosPaymentTypeEnum.Card;
+                                break;
+
+                            case REPLY_PAYMENT_EFT:
+                                order.PaymentMethodId = (int)PosPaymentTypeEnum.EFT; 
+                                break;
+                        }
+                        _context.SaveChanges();
+
+
+                        var saveTotal = await FoodOrderTotalsGet(order.Id);
+                        var productList = await FoodOrderCartGet(order.Id);
+
+                        var result = await _pointOfSaleService.OrderSave(order.Id, saveTotal, productList);
+
+                        if (result.success)
+                        {
+                            await MessageOrderSaved(convo.WaId, result.orderId);
+                        }
+                        else
+                        {
+                            await _wati.SessionMessageSend(convo.WaId, $"Error saving order: {result.error}");   
+                        }
+                        #endregion
                         break;
                 }
 
@@ -488,8 +605,6 @@ namespace Pekkish.PointOfSale.Api.Services
                 //TODO: Handle error
             }
         }
-
-
         #endregion
 
         #region WhatsApp Message Send
@@ -574,6 +689,103 @@ namespace Pekkish.PointOfSale.Api.Services
             welcome.Sections = sectionList;
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, welcome);
+        }
+        private async Task MessageFoodOrderVendorWelcome(string whatsappNumber, Guid tenantId, AppTenantInfo tenant)
+        {
+            var messageMedia = new InteractiveButtonsMessageMediaDto();
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerMedia = new InteractiveButtonMessageHeaderMedia();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var media = new InteractiveButtonHeaderMedia();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+            var locationList = await _pointOfSaleService.LocationList(tenantId);
+            var location = new AppLocation();
+            
+            if (locationList.Count == 1)
+            {
+                location = locationList[0];                
+            }
+            else
+            {
+                //TODO: Location Selection
+            }
+
+            #region Buttons
+            buttonList.Add(new InteractiveButtonMessageButton()
+            {
+                Text = REPLY_VENDOR_ORDER_FOOD
+            });
+
+            buttonList.Add(new InteractiveButtonMessageButton()
+            {
+                Text = REPLY_CANCEL
+            });
+            #endregion
+
+            #region Determine if image is available
+            var isImage = false;
+            if (location.PekkishVendorId != null)
+            { 
+                var pekkishVendor = _context.PekkishVendors.SingleOrDefault(x=>x.Id == location.PekkishVendorId);
+
+                if(pekkishVendor != null)
+                {
+                    if (pekkishVendor.Logo != null)
+                    { 
+                        media.Url = pekkishVendor.Logo;
+                        isImage = true;
+                    }
+                }
+            }            
+            #endregion
+
+            if (isImage)
+            {
+                headerMedia.Type = "Image";
+                headerMedia.Media = media;
+                messageMedia.Header = headerMedia;
+
+                messageMedia.Body += $"*{tenant.Name}*";
+                messageMedia.Body += "\r\n";
+
+                if (!tenant.WelcomeMessage.IsNullOrEmpty())
+                {
+                    messageMedia.Body += "\r\n";
+                    messageMedia.Body += tenant.WelcomeMessage;
+                    messageMedia.Body += "\r\n";
+                    messageMedia.Body += "\r\n";
+                }
+                
+                messageMedia.Footer = "";
+
+                messageMedia.Buttons = buttonList;
+
+                var result = await _wati.InteractiveButtonsMessageMediaSend(whatsappNumber, messageMedia);
+            }
+            else
+            {
+                headerText.Type = "Text";
+                headerText.Text = tenant.NameShort;
+                messageText.Header = headerText;
+
+                if (!tenant.WelcomeMessage.IsNullOrEmpty())
+                {
+                    messageText.Body += "\r\n";
+                    messageText.Body += tenant.WelcomeMessage;
+                    messageText.Body += "\r\n";
+                    messageText.Body += "\r\n";
+                }
+                else
+                {
+                    messageText.Body = $"Welcome to {tenant.Name}";
+                }
+                
+                messageText.Footer = "";
+
+                messageText.Buttons = buttonList;
+
+                var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+            }
         }
         private async Task MessageFoodOrderBrandSelection(string whatsappNumber, Guid tenantId, AppTenantInfo tenant)
         {
@@ -724,7 +936,10 @@ namespace Pekkish.PointOfSale.Api.Services
 
             for (int c = 0; c < productList.Count; c++) 
             {
-                message += $"{c + 1} {productList[c].Name} - R{productList[c].Price}";
+                message += $"{c + 1} {productList[c].Name}";
+                message += "\r\n";
+                message += $"  R{productList[c].Price}";
+                message += "\r\n";
                 message += "\r\n";
             }
 
@@ -882,7 +1097,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
         }
-        private async Task MessageFoodOrderMoreProductsConfirmationRemix(string whatsappNumber, AppWatiOrder order)
+        private async Task MessageFoodOrderMoreProductsConfirmationRemixReplyNo(string whatsappNumber, AppWatiOrder order)
         {
             var messageText = new InteractiveButtonsMessageTextDto();
             var headerText = new InteractiveButtonMessageHeaderText();
@@ -905,6 +1120,77 @@ namespace Pekkish.PointOfSale.Api.Services
             messageText.Body += "\r\n";
             messageText.Body += "What would you lke to do next?";
 
+
+            messageText.Footer = "";
+
+            messageText.Buttons = buttonList;
+
+            var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+        }
+        private async Task MessageFoodOrderMoreProductsConfirmationRemixViewCart(string whatsappNumber, AppWatiOrder order)
+        {
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+
+            var cartList = await FoodOrderCartGet(order.Id);
+            var cartTotal = await FoodOrderTotalsGet(order.Id);
+
+            #region Buttons
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_CHECKOUT });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_ADD_MORE_PRODUCTS });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_CANCEL_ORDER });
+            #endregion
+
+            headerText.Type = "Text";
+            headerText.Text = $"Your Cart";
+
+            messageText.Header = headerText;
+
+            messageText.Body = "";
+
+            foreach (var product in cartList)
+            {
+                messageText.Body += $"{product.Quantity} X {product.Name}";
+                messageText.Body += "\r\n";
+                messageText.Body += $"  R{product.Quantity * product.Amount}";
+                messageText.Body += "\r\n";
+                messageText.Body += "\r\n";
+            }
+
+            messageText.Body += $"Your order total is {cartTotal.ToString("F2")}";            
+            messageText.Body += "\r\n";
+            messageText.Body += "\r\n";
+
+            messageText.Body += "What would you like to do next?";
+
+            messageText.Footer = "";
+
+            messageText.Buttons = buttonList;
+
+            var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+        }
+        private async Task MessageFoodOrderMoreProductsConfirmationRemixCheckOut(string whatsappNumber, AppWatiOrder order)
+        {
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+
+            var cartList = await FoodOrderCartGet(order.Id);
+
+            #region Buttons
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_YES });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_NO });
+            #endregion
+
+            headerText.Type = "Text";
+            headerText.Text = $"Check Out";
+
+            messageText.Header = headerText;
+
+            messageText.Body = "";
+
+            messageText.Body += "Are you sure you would lke to check out?";
 
             messageText.Footer = "";
 
@@ -937,6 +1223,42 @@ namespace Pekkish.PointOfSale.Api.Services
             messageText.Buttons = buttonList;
 
             var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+        }
+        private async Task MessageFoodOrderPayMethodConfirm(string whatsappNumber)
+        {
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+
+            #region Buttons
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_PAYMENT_CASH });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_PAYMENT_CARD });            
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_PAYMENT_EFT });
+            #endregion
+
+            headerText.Type = "Text";
+            headerText.Text = $"Payment Method";
+
+            messageText.Header = headerText;
+
+            messageText.Body += "Please confirm payment method.";
+
+
+            messageText.Footer = "";
+
+            messageText.Buttons = buttonList;
+
+            var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+        }
+        private async Task MessageOrderSaved(string whatsappNumber, int orderId)
+        {
+            string message = "";
+            message += "Your order has been submitted for processing. You will be notified shortly with the vendor's response";
+            message += "\r\n";
+            message += "\r\n";
+            message += $"Your order number is {orderId}";
+
+            await _wati.SessionMessageSend(whatsappNumber, message);
         }
         #endregion
 
@@ -975,10 +1297,10 @@ namespace Pekkish.PointOfSale.Api.Services
                 await MessageFoodOrderProductCategorySelectionList(convo.WaId, brandList[0]);
             }
             else
-            {
+            {                
                 //Set Status to Brand Selection
                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.BrandSelection);
-
+                
                 //Send Brand List
                 await MessageFoodOrderBrandSelection(convo.WaId, tenantId, tenant);
             }
