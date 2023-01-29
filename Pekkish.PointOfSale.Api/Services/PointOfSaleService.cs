@@ -28,9 +28,10 @@ namespace Pekkish.PointOfSale.Api.Services
         }
 
         #region WhatApp Interaction
-        
+
         #endregion
 
+        #region Vendor
         public async Task<List<AppTenantInfo>> VendorList()
         {
             return await Task.Run(() =>
@@ -46,6 +47,9 @@ namespace Pekkish.PointOfSale.Api.Services
                 return result;
             });            
         }
+        #endregion
+
+        #region Location
         public async Task<List<AppLocation>> LocationList(Guid tenantId)
         {
             return await Task.Run(() =>
@@ -60,6 +64,9 @@ namespace Pekkish.PointOfSale.Api.Services
                 return result;
             });
         }
+        #endregion
+
+        #region Brand
         public async Task<List<AppBrand>> BrandList(Guid tenantId)
         {
             return await Task.Run(() =>
@@ -84,6 +91,9 @@ namespace Pekkish.PointOfSale.Api.Services
                 return result;
             });
         }
+        #endregion
+
+        #region Product Category
         public async Task<List<AppProductCategory>> ProductCategoryList(int brandId)
         {
             return await Task.Run(() =>
@@ -97,9 +107,10 @@ namespace Pekkish.PointOfSale.Api.Services
                               select list).ToList();
 
                 Parallel.ForEach(result, item =>
-                {
+                {                    
                     item.Name = (item.ExternalAppName.IsNullOrEmpty()) ? item.Name : item.ExternalAppName;
                     item.Name = (item.Name.Length > 24) ? item.Name.Substring(0, 24) : item.Name;
+                    item.Name = item.Name.Replace('&', '_');
                 });
 
                 return result;
@@ -113,7 +124,10 @@ namespace Pekkish.PointOfSale.Api.Services
                 
                 return result;
             });
-        }      
+        }
+        #endregion
+
+        #region Product
         public async Task<List<AppProduct>> ProductList(int categoryId)
         {
             return await Task.Run(() =>
@@ -128,6 +142,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
                 Parallel.ForEach(result, item =>
                 {
+                    item.Name = item.Name.Replace('&', '_');
                     item.Name = (item.Name.Length > 24) ? item.Name.Substring(0, 24) : item.Name;
                 });
 
@@ -143,6 +158,9 @@ namespace Pekkish.PointOfSale.Api.Services
                 return result;
             });
         }
+        #endregion
+
+        #region Order
         public async Task<dynamic> OrderSave(int orderId, decimal total, List<AppWatiOrderDetail> productList)
         {
             dynamic result = new ExpandoObject();
@@ -324,5 +342,6 @@ namespace Pekkish.PointOfSale.Api.Services
                 return returnValue;
             });
         }
+        #endregion
     }
 }

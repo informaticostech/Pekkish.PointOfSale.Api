@@ -49,7 +49,13 @@ namespace Pekkish.PointOfSale.Api.Services
             var savedMessage = await MessageReceiveSave(message);
 
             //Restrict Access
-            if (message.WaId == "27839777068")
+            if (    
+                message.WaId == "27839777068"       //FB
+                || message.WaId == "27825678124"    //AJK
+                || message.WaId == "27671324043"    //Nash
+                || message.WaId == "27760486780"    //Aneeq
+                || message.WaId == "27825600567"    //SB
+                )
             {
                 //Only do automated when there is not a current operator assigned
                 if (message.AssignedId == null)
@@ -120,6 +126,17 @@ namespace Pekkish.PointOfSale.Api.Services
                                     await ConversationComplete(convo.Id);
                                     #endregion
                                     break;
+
+                                default:
+                                    //Catch error in loop. Clear existing convo.
+                                    await ConversationCancel(convo.Id);
+
+                                    //Send training message
+                                    await _wati.SessionMessageSend(convo.WaId, "Unfortunately, I am unable to answer your text message. If you would like to speak to a human please select 'Chat to a human' from the list of responses below:");
+
+                                    //Send Welcome
+                                    await MessageWelcome(message.WaId);
+                                    break;
                             }
                         }
 
@@ -143,7 +160,7 @@ namespace Pekkish.PointOfSale.Api.Services
             {
                 AppWatiMessage watiMessage = new AppWatiMessage();
                 watiMessage.WatiId = message.Id;
-                watiMessage.Created = message.Created;
+                watiMessage.Created = DateTime.Now;
                 watiMessage.WhatsappMessageId = message.WhatsappMessageId;
                 watiMessage.ConversationId = message.ConversationId;
                 watiMessage.TicketId = message.TicketId;
@@ -237,6 +254,16 @@ namespace Pekkish.PointOfSale.Api.Services
                 convo.CompletedDate = DateTime.Now;
                 _context.SaveChanges();
             });            
+        }
+        private async Task ConversationCancel(int id)
+        {
+            await Task.Run(() =>
+            {
+                var convo = _context.AppWatiConversations.Single(x => x.Id == id);
+                convo.WatiConversationStatusId = (int)WatiConversationStatusEnum.Cancelled;
+                convo.CompletedDate = DateTime.Now;                
+                _context.SaveChanges();
+            });
         }
         private async Task FoodOrderCreate(SessionMessageReceiveDto message, AppWatiConversation convo)
         {
@@ -349,7 +376,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.VendorLanding:
-
+                        #region Vendor Landing
                         var tenantFromVendorLanding = _context.AppTenantInfos.Single(x => x.TenantId == order.TenantId);
 
                         switch (messageReply)
@@ -367,6 +394,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await MessageFoodOrderVendorSelection(convo.WaId);
                                 break;
                         }
+                        #endregion
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.BrandSelection:
@@ -383,6 +411,26 @@ namespace Pekkish.PointOfSale.Api.Services
 
                         await ProductSelectionFunction(convo, order, category);
                         #endregion 
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.CategorySelectionText:
+                        #region Product Selection Text
+                        int categorySelection = Convert.ToInt32(messageReply);
+
+                        if (categorySelection == 0)
+                        {
+                            //var brandFromProductSelection = await _pointOfSaleService.BrandItemGet((int)order.CurrentBrand);
+                            //await ProductCategorySelectionFunction(convo, order, brandFromProductSelection);
+                        }
+                        else
+                        {
+                            var categoryFromText = (await _pointOfSaleService.ProductCategoryList((int)order.CurrentBrand))[categorySelection - 1];
+
+                            await ProductSelectionFunction(convo, order, categoryFromText);                                                        
+                        }
+
+                        #endregion
+
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.ProductSelection:
@@ -438,6 +486,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.ProductAddToCardConfirm:
+
                         #region Product Add to Cart Confirm
                         var productFromAddToCart = await _pointOfSaleService.ProductItemGet((int)order.CurrentProduct);
                         var categoryFromAddToCart = await _pointOfSaleService.ProductCategoryItemGet((int)order.CurrentCategory);
@@ -457,10 +506,11 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await ProductSelectionFunction(convo, order, categoryFromAddToCart);
                                 break;
                         }
+                        #endregion
                         break;
-                        #endregion 
 
                     case (int)WatiFoodOrderStatusEnum.QuantityConfirm:
+
                         #region Quantity Confirm
                         var productFromQuantityConfirm = await _pointOfSaleService.ProductItemGet((int)order.CurrentProduct);
                         var quntity = Convert.ToInt16(messageReply);
@@ -834,7 +884,7 @@ namespace Pekkish.PointOfSale.Api.Services
             {
                 rowList.Add(new InteractivelistMessageSectionRow
                 {
-                    Title = item.Name,          // (item.ExternalAppName.IsNullOrEmpty()) ? item.Name : item.ExternalAppName,
+                    Title = item.Name,          
                     Description = ""
                 });
             }
@@ -1051,10 +1101,10 @@ namespace Pekkish.PointOfSale.Api.Services
             rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "4", Description = "" });
             rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "5", Description = "" });
             rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "6", Description = "" });
-            rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "7", Description = "" });
-            rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "8", Description = "" });
-            rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "9", Description = "" });
-            rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "10", Description = "" });
+            //rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "7", Description = "" });
+            //rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "8", Description = "" });
+            //rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "9", Description = "" });
+            //rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "10", Description = "" });
 
             //Complile Lists
             sectionList.Add(new InteractiveListMessageSection
