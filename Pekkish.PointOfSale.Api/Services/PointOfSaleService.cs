@@ -161,6 +161,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 order.OrderStatusId = (int)PosOrderStatusEnum.Pending;
                 order.SalesChannelId = (int)PosSalesChannelEnum.WhatsAppPekkish;
                 order.PaymentMethodId = (int)PosPaymentTypeEnum.PayLater;
+                order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Pickup;
                 order.EffectiveDate = DateTime.Now.AddMinutes(20);
                 order.SubTotal = total;
                 order.DeliveryFee = 0;
