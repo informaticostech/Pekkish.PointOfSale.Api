@@ -174,19 +174,24 @@ namespace Pekkish.PointOfSale.Api.Services
                 #region POS Order
                 var order = new AppOrder();
                 order.TenantId = watiOrder.TenantId;
-                order.Brand = "TBC";             //fix
+                order.Brand = "TBC";
                 order.LocationId = watiOrder.LocationId;
                 order.OrderStatusId = (int)PosOrderStatusEnum.Pending;
                 order.SalesChannelId = (int)PosSalesChannelEnum.WhatsAppPekkish;
                 order.PaymentMethodId = (int)PosPaymentTypeEnum.PayLater;
-                order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Pickup;
+                order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Pickup;      //test
                 order.EffectiveDate = DateTime.Now.AddMinutes(20);
                 order.SubTotal = total;
                 order.DeliveryFee = 0;
+                order.DriverTip = 0;    //test
                 order.TaxRatePerc = 0;
+                order.PaidCash = 0;     //test
+                order.PaidCard = 0;     //test
+                order.PaidEft = 0;      //test
+                order.PaidOnline = 0;   //test
                 order.PaidTotal = 0;
                 order.PaidChange = 0;
-                order.ExternalId = watiOrder.WaId.ToString();
+                order.ExternalId = watiOrder.WaId.ToString();   //test
                 order.ExternalCustomerName = watiOrder.Name;
                 order.IsMultiBrand = false;
                 order.CreationTime = DateTime.Now;
