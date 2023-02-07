@@ -11,6 +11,10 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="7.0.2" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="7.0.2" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="7.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="7.0.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="7.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="7.0.0" />
@@ -21,16 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Pekkish.PointOfSale.DAL\Pekkish.PointOfSale.DAL.csproj" />
     <ProjectReference Include="..\Pekkish.PointOfSale.Wati\Pekkish.PointOfSale.Wati.csproj">
       <Private>True</Private>
     </ProjectReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="Pekkish.PointOfSale.DAL">
-      <HintPath>..\..\informaticostech\Pekkish.PointOfSale.DAL\Pekkish.PointOfSale.DAL\bin\Debug\net5.0\Pekkish.PointOfSale.DAL.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
   </ItemGroup>
 
 </Project>
