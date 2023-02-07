@@ -21,12 +21,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Pekkish.PointOfSale.Wati\Pekkish.PointOfSale.Wati.csproj" />
+    <ProjectReference Include="..\Pekkish.PointOfSale.Wati\Pekkish.PointOfSale.Wati.csproj">
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
     <Reference Include="Pekkish.PointOfSale.DAL">
       <HintPath>..\..\informaticostech\Pekkish.PointOfSale.DAL\Pekkish.PointOfSale.DAL\bin\Debug\net5.0\Pekkish.PointOfSale.DAL.dll</HintPath>
+      <Private>True</Private>
     </Reference>
   </ItemGroup>
 
