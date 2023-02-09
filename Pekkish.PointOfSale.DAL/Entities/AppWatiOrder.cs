@@ -9,7 +9,7 @@ public partial class AppWatiOrder
 
     public string Name { get; set; } = null!;
 
-    public int WaId { get; set; }
+    public string WaId { get; set; } = null!;
 
     public int WatiConversationId { get; set; }
 

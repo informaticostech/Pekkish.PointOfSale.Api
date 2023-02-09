@@ -27,7 +27,9 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public const string REPLY_NO = "No";
         public const string REPLY_PAYMENT_CASH = "Cash";
         public const string REPLY_PAYMENT_CARD = "Card";
-        public const string REPLY_PAYMENT_EFT = "EFT";  
+        public const string REPLY_PAYMENT_EFT = "EFT";
+        public const string REPLY_HELP = "help";
+        public const string REPLY_RESTART = "restart";
         
         public enum WatiConversationStatusEnum { Initialised = 1, InProgress, Completed, Expired, Cancelled }
         public enum WatiConversationTypeEnum { FoodOrder = 1, ChatToHuman, BecomeVendor }

@@ -45,111 +45,144 @@ namespace Pekkish.PointOfSale.Api.Services
             else
                 messageReply = message.Text;
 
-            //Save Message
-            var savedMessage = await MessageReceiveSave(message);
+            //Wati Duplicate Check
+            var duplicateCheck = _context.AppWatiMessages.Where(x => x.WatiId == message.Id).ToList();
 
-            //Restrict Access
-            if (    
-                message.WaId == "27839777068"       //FB
-                || message.WaId == "27825678124"    //AJK
-                || message.WaId == "27671324043"    //Nash
-                || message.WaId == "27760486780"    //Aneeq
-                || message.WaId == "27825600567"    //SB
-                )
+            if (duplicateCheck.Count == 0)
             {
-                //Only do automated when there is not a current operator assigned
-                if (message.AssignedId == null)
+                //Save Message
+                var savedMessage = await MessageReceiveSave(message);
+
+                //Restrict Access
+                if (
+                    message.WaId == "27839777068"       //FB
+                    || message.WaId == "27825678124"    //AJK
+                    || message.WaId == "27671324043"    //Nash
+                    || message.WaId == "27760486780"    //Aneeq
+                    || message.WaId == "27825600567"    //SB
+                    )
                 {
-                    //Check Conversation Exists
-                    var conversationActiveList = await ConversationListAcive(message.WaId);
-
-                    if (conversationActiveList.Count == 0)
+                    //Only do automated when there is not a current operator assigned
+                    if (message.AssignedId == null)
                     {
-                        //Create Conversation
-                        var convo = await ConversationCreate(message);
+                        //Check Conversation Exists
+                        var conversationActiveList = await ConversationListAcive(message.WaId);
 
-                        //Set Conversation Status
-                        await ConversationStatusSet(convo.Id, WatiConversationStatusEnum.Initialised);
-
-                        //Send Welcome
-                        await MessageWelcome(message.WaId);
-                    }
-                    else
-                    {
-                        //For Now - Focus on Food. More Work Needed for multiple concurrent conversations (New Vendor, Speak to Human)
-                        var convo = conversationActiveList[0];
-
-                        //Set Conversation Type Set
-                        if (convo.WatiConversationTypeId == null)
+                        if (conversationActiveList.Count == 0)
                         {
-                            switch (messageReply)
+                            //Create Conversation
+                            var convo = await ConversationCreate(message);
+
+                            //Set Conversation Status
+                            await ConversationStatusSet(convo.Id, WatiConversationStatusEnum.Initialised);
+
+                            //Send Welcome
+                            await MessageWelcome(message.WaId);
+                        }
+                        else
+                        {
+                            //For Now - Focus on Food. More Work Needed for multiple concurrent conversations (New Vendor, Speak to Human)
+                            var convo = conversationActiveList[0];
+
+                            //Set Conversation Type Set
+                            if (convo.WatiConversationTypeId == null)
                             {
-                                case REPLY_FOOD_ORDER:
-                                    //Convo Type Set Food Order
-                                    await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.FoodOrder);
+                                switch (messageReply)
+                                {
+                                    case REPLY_FOOD_ORDER:
+                                        #region Food Order
+                                        //Convo Type Set Food Order
+                                        await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.FoodOrder);
 
-                                    //Create Food Order Record (Init)
-                                    await FoodOrderCreate(message, convo);
+                                        //Create Food Order Record (Init)
+                                        await FoodOrderCreate(message, convo);
 
-                                    //Send Vendor List
-                                    await MessageFoodOrderVendorSelection(convo.WaId);
-                                    break;
+                                        //Send Vendor List
+                                        await MessageFoodOrderVendorSelection(convo.WaId);
+                                        #endregion
+                                        return;
 
-                                case REPLY_CHAT_TO_HUMAN:
-                                    #region Chat To Human
-                                    //Convo Type Set Chat to Human
-                                    await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.ChatToHuman);
+                                    case REPLY_CHAT_TO_HUMAN:
+                                        #region Chat To Human
+                                        //Convo Type Set Chat to Human
+                                        await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.ChatToHuman);
 
-                                    //Send Vendor Website
-                                    await MessageChatToHumanRespone(message.WaId);
+                                        //Send Vendor Website
+                                        await MessageChatToHumanRespone(message.WaId);
 
-                                    //Assign to Customer Service                                
-                                    await SessionAssignCustomerService(message.WaId);
+                                        //Assign to Customer Service                                
+                                        await SessionAssignCustomerService(message.WaId);
 
-                                    //Convo Status Set Completed
-                                    await ConversationComplete(convo.Id);
-                                    #endregion
-                                    break;
+                                        //Convo Status Set Completed
+                                        await ConversationComplete(convo.Id);
+                                        #endregion
+                                        return;
 
-                                case REPLY_BECOME_A_VENDOR:
-                                    #region Become a vendor
-                                    //Convo Type Set Become a Vendor
-                                    await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.BecomeVendor);
+                                    case REPLY_BECOME_A_VENDOR:
+                                        #region Become a vendor
+                                        //Convo Type Set Become a Vendor
+                                        await ConversationTypeSet(convo.Id, WatiConversationTypeEnum.BecomeVendor);
 
-                                    //Send Vendor Website
-                                    await MessageWebsiteVendor(message.WaId);
+                                        //Send Vendor Website
+                                        await MessageWebsiteVendor(message.WaId);
 
-                                    //Convo Assign to Customer Service
-                                    await SessionAssignCustomerService(message.WaId);
+                                        //Convo Assign to Customer Service
+                                        await SessionAssignCustomerService(message.WaId);
 
-                                    //Convo Status Set Completed
-                                    await ConversationComplete(convo.Id);
-                                    #endregion
-                                    break;
+                                        //Convo Status Set Completed
+                                        await ConversationComplete(convo.Id);
+                                        #endregion
+                                        return;
 
-                                default:
-                                    //Catch error in loop. Clear existing convo.
-                                    await ConversationCancel(convo.Id);
+                                    default:
+                                        #region Default
+                                        //Catch error in loop. Clear existing convo.
+                                        await ConversationCancel(convo.Id);
 
-                                    //Send training message
-                                    await _wati.SessionMessageSend(convo.WaId, "Unfortunately, I am unable to answer your text message. If you would like to speak to a human please select 'Chat to a human' from the list of responses below:");
+                                        //Send training message
+                                        await _wati.SessionMessageSend(convo.WaId, "Unfortunately, I am unable to answer your text message. If you would like to speak to a human please select 'Chat to a human' from the list of responses below:");
 
-                                    //Send Welcome
-                                    await MessageWelcome(message.WaId);
+                                        //Send Welcome
+                                        await MessageWelcome(message.WaId);
+                                        #endregion
+                                        return;
+                                }
+                            }
+
+                            if (messageReply == REPLY_RESTART)
+                            {
+                                await ConversationCancel(convo.Id);
+
+                                await MessageWelcome(message.WaId);
+
+                                return;
+                            }
+
+                            if (messageReply == REPLY_HELP)
+                            {
+                                //Cancel conversation
+                                await ConversationCancel(convo.Id);
+
+                                //Send Chat to Human Response
+                                await MessageChatToHumanRespone(message.WaId);
+
+                                //Assign to Customer Service                                
+                                await SessionAssignCustomerService(message.WaId);
+                            }
+
+                            switch (convo.WatiConversationTypeId)
+                            {
+                                case (int)WatiConversationTypeEnum.FoodOrder:                                    
+                                        await FoodOrderProcess(message, convo, messageReply);
                                     break;
                             }
                         }
-
-                        switch (convo.WatiConversationTypeId)
-                        {
-                            case (int)WatiConversationTypeEnum.FoodOrder:
-                                //Run Order Through
-                                if (messageReply != REPLY_FOOD_ORDER)
-                                    await FoodOrderProcess(message, convo, messageReply);
-                                break;
-                        }
                     }
                 }
+            }
+            else
+            {
+                var test = message;
             }
         }
 
@@ -157,7 +190,7 @@ namespace Pekkish.PointOfSale.Api.Services
         private async Task<AppWatiMessage> MessageReceiveSave(SessionMessageReceiveDto message)
         {
             return await Task.Run(() =>
-            {
+            {                
                 AppWatiMessage watiMessage = new AppWatiMessage();
                 watiMessage.WatiId = message.Id;
                 watiMessage.Created = DateTime.Now;
@@ -274,6 +307,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 order.Name = message.SenderName;
                 order.WatiConversationId = convo.Id;
                 order.WatiOrderStatusId = (int)WatiFoodOrderStatusEnum.VendorSelection;
+                order.WaId = convo.WaId;
                 order.SubTotal = 0;
                 order.Total = 0;
                 order.CreatedDate = DateTime.Now;
@@ -286,7 +320,6 @@ namespace Pekkish.PointOfSale.Api.Services
                 AppWatiConversation appWatiConversation = _context.AppWatiConversations.Single(x => x.Id == convo.Id);
                 appWatiConversation.WatiOrderid = order.Id;
                 _context.SaveChanges();
-
             });
         }
         private async Task<AppWatiOrder> FoodOrderDetailCreate(int orderId, AppProduct product, int quantity)
@@ -360,18 +393,24 @@ namespace Pekkish.PointOfSale.Api.Services
                 switch (order.WatiOrderStatusId)
                 {
                     case (int)WatiFoodOrderStatusEnum.VendorSelection:
-                        #region Vendor Selection
-                        var tenant = (await _pointOfSaleService.VendorList()).Single(x=>x.Name== messageReply);
+                        #region Vendor Selection                        
+                        var tenant = (await _pointOfSaleService.VendorList()).SingleOrDefault(x => x.Name == messageReply);
 
-                        order.TenantId = tenant.TenantId;
-                        _context.SaveChanges();
+                        if (tenant == null)
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                        }
+                        else
+                        {
+                            order.TenantId = tenant.TenantId;
+                            _context.SaveChanges();
 
-                        //Set Status Vendor Landing
-                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
+                            //Set Status Vendor Landing
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
 
-                        //Message welcome message
-                        await MessageFoodOrderVendorWelcome(convo.WaId, (Guid)tenant.TenantId, tenant);
-                                                
+                            //Message welcome message
+                            await MessageFoodOrderVendorWelcome(convo.WaId, (Guid)tenant.TenantId, tenant);
+                        }
                         #endregion
                         break;
 
@@ -647,12 +686,17 @@ namespace Pekkish.PointOfSale.Api.Services
                         }
                         #endregion
                         break;
+
+                    default:
+                        //Send message unexpeced response
+                        await MessageResponseUnexpected(convo.WaId);
+                        break;
                 }
 
             }
             else
             {
-                //TODO: Handle error
+                await MessageResponseUnexpected(convo.WaId);
             }
         }
         #endregion
@@ -665,8 +709,15 @@ namespace Pekkish.PointOfSale.Api.Services
             List<InteractivelistMessageSectionRow> rowList = new List<InteractivelistMessageSectionRow>();
 
             welcome.Header = "Welcome to Pekkish";
+
             welcome.Body = "How can we help you today?";
-            welcome.Footer = "Pekkish BOT (Test)";
+            welcome.Body += "\r\n";
+            welcome.Body += "\r\n";
+            welcome.Body += $"Please note: ";
+            welcome.Body += "\r\n";
+            welcome.Body += $"At any moment during conversation you can type '{REPLY_RESTART}' to start over, or '{REPLY_HELP}' to speak to a member of our team.";
+            
+            welcome.Footer = "Pekkish BOT";
             welcome.ButtonText = "Choose Option";
 
             rowList.Add(new InteractivelistMessageSectionRow
@@ -708,6 +759,15 @@ namespace Pekkish.PointOfSale.Api.Services
             await _wati.SessionMessageSend(whatsappNumber, "A member of our team has been assigned to this chat. How can we assit you?");
 
             //Todo: Email Customer Service.
+        }
+        private async Task MessageResponseUnexpected(string whatsappNumber) 
+        {
+            string message = "Your response is unexpected.";
+            message += "\r\n";
+            message += "\r\n";
+            message += $"Please try again, or type '{REPLY_RESTART}' to start over, or '{REPLY_HELP}' to speak to a member of our team.";
+
+            await _wati.SessionMessageSend(whatsappNumber, message);
         }
         private async Task MessageFoodOrderVendorSelection(string whatsappNumber)
         {

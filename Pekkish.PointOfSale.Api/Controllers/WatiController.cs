@@ -18,35 +18,20 @@ namespace Pekkish.PointOfSale.Api.Controllers
             _pointOfSaleService= pointOfSaleService;            
             _watiService= watiService;
         }
-        
+
         [HttpPost("SessionMessageReceive")]
         public async Task<IActionResult> SessionMessageReceive([FromBody] SessionMessageReceiveDto dto)
         {
-            try
-            {
-                await _watiService.MessageReceive(dto);
-                              
-                return Ok();    
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
-            }
+            await _watiService.MessageReceive(dto);
+
+            return Ok();
         }
         [HttpGet("VendorList")]
         private async Task<IActionResult> VendorList()
-        {
-            try
-            {
-                var result = await _pointOfSaleService.VendorList();
+        {            
+            var result = await _pointOfSaleService.VendorList();
 
-                return Ok(result);
-
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
-            }
+            return Ok(result);
         }
     }
 }
