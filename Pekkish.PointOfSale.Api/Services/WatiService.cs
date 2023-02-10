@@ -84,6 +84,29 @@ namespace Pekkish.PointOfSale.Api.Services
                             //For Now - Focus on Food. More Work Needed for multiple concurrent conversations (New Vendor, Speak to Human)
                             var convo = conversationActiveList[0];
 
+                            //Restart
+                            if (messageReply == REPLY_RESTART)
+                            {
+                                await ConversationCancel(convo.Id);
+
+                                await MessageWelcome(message.WaId);
+
+                                return;
+                            }
+
+                            //Help
+                            if (messageReply == REPLY_HELP)
+                            {
+                                //Cancel conversation
+                                await ConversationCancel(convo.Id);
+
+                                //Send Chat to Human Response
+                                await MessageChatToHumanRespone(message.WaId);
+
+                                //Assign to Customer Service                                
+                                await SessionAssignCustomerService(message.WaId);
+                            }
+
                             //Set Conversation Type Set
                             if (convo.WatiConversationTypeId == null)
                             {
@@ -148,28 +171,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                         return;
                                 }
                             }
-
-                            if (messageReply == REPLY_RESTART)
-                            {
-                                await ConversationCancel(convo.Id);
-
-                                await MessageWelcome(message.WaId);
-
-                                return;
-                            }
-
-                            if (messageReply == REPLY_HELP)
-                            {
-                                //Cancel conversation
-                                await ConversationCancel(convo.Id);
-
-                                //Send Chat to Human Response
-                                await MessageChatToHumanRespone(message.WaId);
-
-                                //Assign to Customer Service                                
-                                await SessionAssignCustomerService(message.WaId);
-                            }
-
+                           
                             switch (convo.WatiConversationTypeId)
                             {
                                 case (int)WatiConversationTypeEnum.FoodOrder:                                    
