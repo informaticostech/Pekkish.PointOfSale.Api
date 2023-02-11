@@ -143,7 +143,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 Parallel.ForEach(result, item =>
                 {
                     item.Name = item.Name.Replace('&', '_');
-                    item.Name = (item.Name.Length > 24) ? item.Name.Substring(0, 24) : item.Name;
+                    //item.Name = (item.Name.Length > 24) ? item.Name.Substring(0, 24) : item.Name;
                 });
 
                 return result;

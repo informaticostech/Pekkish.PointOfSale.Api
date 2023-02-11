@@ -18,6 +18,8 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public const string REPLY_VENDOR_ORDER_FOOD = "Feed Me!";
         public const string REPLY_ADD_TO_CART = "Add to Cart";
         public const string REPLY_CANCEL = "Cancel";
+        public const string REPLY_BACK_VENDOR = "Go back to Vendor";
+        public const string REPLY_BACK_BRAND = "Go back to Brand list";
         public const string REPLY_BACK_CATEGORY = "Go back to Category list";
         public const string REPLY_ADD_MORE_PRODUCTS = "Add Another Product";
         public const string REPLY_VIEW_CART = "View Cart";

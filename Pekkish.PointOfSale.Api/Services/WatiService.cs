@@ -89,6 +89,13 @@ namespace Pekkish.PointOfSale.Api.Services
                             {
                                 await ConversationCancel(convo.Id);
 
+                                //Create Conversation
+                                convo = await ConversationCreate(message);
+
+                                //Set Conversation Status
+                                await ConversationStatusSet(convo.Id, WatiConversationStatusEnum.Initialised);
+
+                                //Send Welcome
                                 await MessageWelcome(message.WaId);
 
                                 return;
@@ -391,40 +398,86 @@ namespace Pekkish.PointOfSale.Api.Services
             if (convo.WatiOrderid != null)
             {
                 var order = _context.AppWatiOrders.Single(x => x.Id == (int)convo.WatiOrderid);
-                                
+                AppTenantInfo tenant = new AppTenantInfo();
+                AppBrand brand = new AppBrand();
+                AppProductCategory category = new AppProductCategory();
+                AppProduct product = new AppProduct();
+                AppProductExtra extra = new AppProductExtra();
+                List<AppBrand> brandList = new List<AppBrand>();
+                var tenantId = new Guid();
+                int brandId = 0;
+                int categoryId = 0;
+                int productId = 0;
+                int extraId = 0;                
+                
+                #region Logistics
+                if (order.TenantId != null)
+                {
+                    tenant = _context.AppTenantInfos.Single(x => x.TenantId == order.TenantId);
+                    tenantId = (Guid)order.TenantId;
+
+                    brandList = await _pointOfSaleService.BrandList(tenantId);
+                }
+
+                if (order.CurrentBrand != null)
+                {
+                    brandId = (int)order.CurrentBrand;
+                    brand = await _pointOfSaleService.BrandItemGet(brandId);
+                }
+
+                if (order.CurrentCategory != null)
+                {
+                    categoryId = (int)order.CurrentCategory;
+                    category = await _pointOfSaleService.ProductCategoryItemGet(categoryId);
+                }
+
+                if (order.CurrentProduct != null)
+                {
+                    productId = (int)order.CurrentProduct;
+                    product = await _pointOfSaleService.ProductItemGet(productId);
+                }
+
+                if (order.CurrentProductExtra != null)
+                {
+                    extraId = (int)order.CurrentProductExtra;
+                    
+                }
+                #endregion
+
                 switch (order.WatiOrderStatusId)
                 {
                     case (int)WatiFoodOrderStatusEnum.VendorSelection:
                         #region Vendor Selection                        
-                        var tenant = (await _pointOfSaleService.VendorList()).SingleOrDefault(x => x.Name == messageReply);
+                        var tenantSelected = (await _pointOfSaleService.VendorList()).SingleOrDefault(x => x.Name == messageReply);
 
-                        if (tenant == null)
+                        if (tenantSelected == null)
                         {
                             await MessageResponseUnexpected(convo.WaId);
                         }
                         else
                         {
-                            order.TenantId = tenant.TenantId;
+                            order.TenantId = tenantSelected.TenantId;
                             _context.SaveChanges();
 
-                            //Set Status Vendor Landing
-                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
+                            if (order.TenantId != null)
+                            {
+                                //Set Status Vendor Landing
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
 
-                            //Message welcome message
-                            await MessageFoodOrderVendorWelcome(convo.WaId, (Guid)tenant.TenantId, tenant);
+                                //Message welcome message
+                                await MessageFoodOrderVendorWelcome(convo.WaId, (Guid)order.TenantId, tenantSelected);
+                            }
                         }
                         #endregion
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.VendorLanding:
-                        #region Vendor Landing
-                        var tenantFromVendorLanding = _context.AppTenantInfos.Single(x => x.TenantId == order.TenantId);
-
+                        #region Vendor Landing                       
                         switch (messageReply)
                         {
                             case REPLY_VENDOR_ORDER_FOOD:
                                 //Brand or Category Selection
-                                await BrandOrCategorySelectionFunction(convo, order, tenantFromVendorLanding);
+                                await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);
                                 break;
 
                             case REPLY_CANCEL:
@@ -434,38 +487,107 @@ namespace Pekkish.PointOfSale.Api.Services
                                 //Send Vendor List
                                 await MessageFoodOrderVendorSelection(convo.WaId);
                                 break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                return;
                         }
                         #endregion
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.BrandSelection:
                         #region Brand Selection
-                        var brand = (await _pointOfSaleService.BrandList((Guid)order.TenantId)).Single(x => x.Name == messageReply);
+                        var brandSelected = (await _pointOfSaleService.BrandList(tenantId)).SingleOrDefault(x => x.Name == messageReply);
 
-                        await ProductCategorySelectionFunction(convo, order, brand);
+                        if (brandSelected == null)
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                        }
+                        else
+                        {
+                            await ProductCategorySelectionFunction(convo, order, brandSelected, tenantId);
+                        }                        
                         #endregion
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.CategorySelection:
-                        #region Category Selection
-                        var category = (await _pointOfSaleService.ProductCategoryList((int)order.CurrentBrand)).Single(x => x.Name == messageReply);
+                        #region Category Selection                                              
+                        switch (messageReply)
+                        {
+                            case REPLY_BACK_BRAND:
+                                //Go Back to Brand List
+                                //Set Status to Brand Selection
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.BrandSelection);
 
-                        await ProductSelectionFunction(convo, order, category);
+                                //Send Brand List
+                                await MessageFoodOrderBrandSelection(convo.WaId, tenantId, tenant);
+                                break;
+
+                            case REPLY_BACK_VENDOR:
+                                //Go back to Vendor Landing
+                                //Set Status Vendor Landing
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
+
+                                //Message welcome message
+                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant);
+
+                                break;
+
+                            default:
+                                var categorySelected = (await _pointOfSaleService.ProductCategoryList(brandId)).SingleOrDefault(x => x.Name == messageReply);
+
+                                if (categorySelected == null)
+                                {
+                                    await MessageResponseUnexpected(convo.WaId);
+                                }
+                                else
+                                {
+                                    await ProductSelectionFunction(convo, order, categorySelected);
+                                }
+                                break;
+                        }
                         #endregion 
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.CategorySelectionText:
-                        #region Product Selection Text
-                        int categorySelection = Convert.ToInt32(messageReply);
+                        #region Product Selection Text                                                
+                        int categorySelection;
 
+                        try
+                        {
+                            categorySelection = Convert.ToInt32(messageReply);
+                        }
+                        catch
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                            return;
+                        }
+                                                
                         if (categorySelection == 0)
                         {
-                            //var brandFromProductSelection = await _pointOfSaleService.BrandItemGet((int)order.CurrentBrand);
-                            //await ProductCategorySelectionFunction(convo, order, brandFromProductSelection);
+                            if (brandList.Count == 1)
+                            {
+                                //Go back to Vendor Landing
+                                //Set Status Vendor Landing
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
+
+                                //Message welcome message
+                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant);
+                            }
+                            else
+                            {
+                                //Go Back to Brand List
+                                //Set Status to Brand Selection
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.BrandSelection);
+
+                                //Send Brand List
+                                await MessageFoodOrderBrandSelection(convo.WaId, tenantId, tenant);
+
+                            }                            
                         }
                         else
                         {
-                            var categoryFromText = (await _pointOfSaleService.ProductCategoryList((int)order.CurrentBrand))[categorySelection - 1];
+                            var categoryFromText = (await _pointOfSaleService.ProductCategoryList(brandId))[categorySelection - 1];
 
                             await ProductSelectionFunction(convo, order, categoryFromText);                                                        
                         }
@@ -478,23 +600,28 @@ namespace Pekkish.PointOfSale.Api.Services
                         #region Product Selection
 
                         if (messageReply == REPLY_BACK_CATEGORY)
-                        {
-                            var brandFromProductSelection = await _pointOfSaleService.BrandItemGet((int)order.CurrentBrand);
-                            await ProductCategorySelectionFunction(convo, order, brandFromProductSelection);
+                        {                            
+                            await ProductCategorySelectionFunction(convo, order, brand, tenantId);
                         }
                         else
                         {
-                            var product = (await _pointOfSaleService.ProductList((int)order.CurrentCategory)).Single(x => x.Name == messageReply);
+                            var productSelected = (await _pointOfSaleService.ProductList(categoryId)).SingleOrDefault(x => x.Name == messageReply);
 
-                            order.CurrentProduct = product.Id;
+                            if (productSelected == null)
+                            {
+                                await MessageResponseUnexpected(convo.WaId);
+                            }
+                            else
+                            {
+                                order.CurrentProduct = product.Id;
+                                _context.SaveChanges();
 
-                            //Set Status to Brand Selection
-                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductAddToCardConfirm);
+                                //Set Status to Brand Selection
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductAddToCardConfirm);
 
-                            //Send Product Message
-                            await MessageFoodOrderProductConfirmation(convo.WaId, product);
-
-                            _context.SaveChanges();
+                                //Send Product Message
+                                await MessageFoodOrderProductConfirmation(convo.WaId, productSelected);                                
+                            }
                         }
                         
                         #endregion
@@ -502,17 +629,32 @@ namespace Pekkish.PointOfSale.Api.Services
 
                     case (int)WatiFoodOrderStatusEnum.ProductSelectionText:
                         #region Product Selection Text
-                        int productSelection = Convert.ToInt32(messageReply);
+                        int productSelection;
+
+                        try
+                        {
+                            productSelection = Convert.ToInt32(messageReply);
+                        }
+                        catch
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                            return;
+                        }
 
                         if (productSelection == 0)
-                        {
-                            var brandFromProductSelection = await _pointOfSaleService.BrandItemGet((int)order.CurrentBrand);
-                            await ProductCategorySelectionFunction(convo, order, brandFromProductSelection);
+                        {                            
+                            await ProductCategorySelectionFunction(convo, order, brand, tenantId);
                         }
                         else
                         {
-                            var productFromText = (await _pointOfSaleService.ProductList((int)order.CurrentCategory))[productSelection - 1];
+                            var productFromText = (await _pointOfSaleService.ProductList(categoryId))[productSelection - 1];
 
+                            if (productFromText == null)
+                            {
+                                await MessageResponseUnexpected(convo.WaId);
+                                return;
+                            }
+                            
                             //Set Status to Confirm Add To Cart
                             await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductAddToCardConfirm);
 
@@ -527,11 +669,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.ProductAddToCardConfirm:
-
-                        #region Product Add to Cart Confirm
-                        var productFromAddToCart = await _pointOfSaleService.ProductItemGet((int)order.CurrentProduct);
-                        var categoryFromAddToCart = await _pointOfSaleService.ProductCategoryItemGet((int)order.CurrentCategory);
-                            
+                        #region Product Add to Cart Confirm                                                   
                         switch (messageReply)
                         {
                             case REPLY_ADD_TO_CART:
@@ -539,43 +677,52 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.QuantityConfirm);
 
                                 //Send Quanity Confirmation
-                                await MessageFoodOrderProductQuantity(convo.WaId, productFromAddToCart);
+                                await MessageFoodOrderProductQuantity(convo.WaId, product);
                                 break;
 
                             case REPLY_CANCEL:
                                 //Send Product Selection
-                                await ProductSelectionFunction(convo, order, categoryFromAddToCart);
+                                await ProductSelectionFunction(convo, order, category);
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
                                 break;
                         }
                         #endregion
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.QuantityConfirm:
-
                         #region Quantity Confirm
-                        var productFromQuantityConfirm = await _pointOfSaleService.ProductItemGet((int)order.CurrentProduct);
-                        var quntity = Convert.ToInt16(messageReply);
+                        int quantity;
 
-                        var orderFromQuantityConfirm = await FoodOrderDetailCreate(order.Id, productFromQuantityConfirm, quntity);
+                        try
+                        {
+                            quantity = Convert.ToInt16(messageReply);
+                        }
+                        catch 
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                            return;
+                        }
+
+                        var orderFromQuantityConfirm = await FoodOrderDetailCreate(order.Id, product, quantity);
 
                         //Set Status to Category Selection
                         await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
 
                         //Send Message Add More Products
-                        await MessageFoodOrderMoreProductsConfirmation(convo.WaId, productFromQuantityConfirm, orderFromQuantityConfirm);
+                        await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, orderFromQuantityConfirm);
                         #endregion
                         break;
 
-                    case (int)WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm:
-                        
+                    case (int)WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm:                        
                         #region Product More Checkout Confirm
                         switch (messageReply)
                         {
                             case REPLY_ADD_MORE_PRODUCTS:
-                                //Brand or Category Selection
-                                var tentantFromProductMoreConfirm = _context.AppTenantInfos.Single(x => x.Id == order.TenantInfoId);
-
-                                await BrandOrCategorySelectionFunction(convo, order, tentantFromProductMoreConfirm);
+                                //Brand or Category Selection                                
+                                await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);
                                 break;
 
                             case REPLY_VIEW_CART:
@@ -617,11 +764,10 @@ namespace Pekkish.PointOfSale.Api.Services
                                 break;
 
                             default:
-                                await _wati.SessionMessageSend(convo.WaId, "Invalid response. Please try again");
+                                await MessageResponseUnexpected(convo.WaId);
                                 break;
                         }
                         #endregion
-
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.CancelConfirm:
@@ -649,12 +795,16 @@ namespace Pekkish.PointOfSale.Api.Services
                                 //Send Message Add More Products (Armand Van Helden REMIX)
                                 await MessageFoodOrderMoreProductsConfirmationRemixReplyNo(convo.WaId, order);
                                 break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                break;
+
                         }
                         #endregion
                         break;
                     
                     case (int)WatiFoodOrderStatusEnum.OrderPayMethodConfirm:
-
                         #region Paymethod Confirm
                         switch (messageReply)
                         {
@@ -689,12 +839,10 @@ namespace Pekkish.PointOfSale.Api.Services
                         #endregion
                         break;
 
-                    default:
-                        //Send message unexpeced response
+                    default:                        
                         await MessageResponseUnexpected(convo.WaId);
                         break;
                 }
-
             }
             else
             {
@@ -719,7 +867,7 @@ namespace Pekkish.PointOfSale.Api.Services
             welcome.Body += "\r\n";
             welcome.Body += $"At any moment during conversation you can type '{REPLY_RESTART}' to start over, or '{REPLY_HELP}' to speak to a member of our team.";
             
-            welcome.Footer = "Pekkish BOT";
+            welcome.Footer = "";
             welcome.ButtonText = "Choose Option";
 
             rowList.Add(new InteractivelistMessageSectionRow
@@ -930,18 +1078,51 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
         }
-        private async Task MessageFoodOrderProductCategorySelectionList(string whatsappNumber, AppBrand brand)
+        private async Task MessageFoodOrderProductCategorySelectionList(string whatsappNumber, AppBrand brand, Guid tenantId)
         {
             var message = new InteractiveListMessageDto();
             var sectionList = new List<InteractiveListMessageSection>();
             var rowList = new List<InteractivelistMessageSectionRow>();
+            var rowBackList = new List<InteractivelistMessageSectionRow>();
+            var brandList = await _pointOfSaleService.BrandList(tenantId);
             var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
 
-            message.Header = brand.NameShort;
+            message.Header = brand.NameShort.ToString();
             message.Body = "Please select from the following categories:";
             message.Footer = "";
             message.ButtonText = "Choose Category";
 
+            if (brandList.Count == 1)
+            {
+                //Back to Categories
+                rowBackList.Add(new InteractivelistMessageSectionRow
+                {
+                    Title = REPLY_BACK_VENDOR,
+                    Description = ""
+                });
+
+                sectionList.Add(new InteractiveListMessageSection
+                {
+                    Title = $"Vendor",
+                    Rows = rowBackList
+                });
+            }
+            else
+            {
+                //Back to Brands
+                rowBackList.Add(new InteractivelistMessageSectionRow
+                {
+                    Title = REPLY_BACK_BRAND,
+                    Description = ""
+                });
+
+                sectionList.Add(new InteractiveListMessageSection
+                {
+                    Title = $"Brands",
+                    Rows = rowBackList
+                });
+            }
+            
             foreach (var item in categoryList)
             {
                 rowList.Add(new InteractivelistMessageSectionRow
@@ -961,15 +1142,37 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
         }
-        private async Task MessageFoodOrderProductCategorySelectionText(string whatsappNumber, AppBrand brand)
+        private async Task MessageFoodOrderProductCategorySelectionText(string whatsappNumber, AppBrand brand, Guid tenantId)
         {
             string message;
             var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
+            var brandList = await _pointOfSaleService.BrandList(tenantId);
 
             message = brand.Name.Replace('&', '_').ToUpper();
             message += "\r\n";
             message += "\r\n";
-            message += "Please select from the following categories:";
+            message += "Please enter the number on the left hand side of your selection.";
+            message += "\r\n";
+            message += "\r\n";
+
+
+            // Go back to either brand or store
+            if (brandList.Count == 1)
+            {
+                message += "Vendor:";
+                message += "\r\n";
+                message += $"0 {REPLY_BACK_VENDOR}";
+            }
+            else
+            {
+                message += "Brands:";
+                message += "\r\n";
+                message += $"0 {REPLY_BACK_BRAND}";
+            }
+
+            message += "\r\n";
+            message += "\r\n";
+            message += "Categories:";
             message += "\r\n";
 
             for (int c = 0; c < categoryList.Count; c++)
@@ -1379,9 +1582,8 @@ namespace Pekkish.PointOfSale.Api.Services
             await _wati.SessionAssignOperator(whatsappNumber, _watiConfig.DefaultOperatorEmail);
         }
 
-        private async Task BrandOrCategorySelectionFunction(AppWatiConversation convo, AppWatiOrder order, AppTenantInfo tenant)
-        {
-            var tenantId = (Guid)tenant.TenantId;
+        private async Task BrandOrCategorySelectionFunction(AppWatiConversation convo, AppWatiOrder order, Guid tenantId,  AppTenantInfo tenant)
+        {            
             var locationList = await _pointOfSaleService.LocationList(tenantId);
             var brandList = await _pointOfSaleService.BrandList(tenantId);
 
@@ -1406,7 +1608,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelection);
 
                 //Send Category List
-                await MessageFoodOrderProductCategorySelectionList(convo.WaId, brandList[0]);
+                await MessageFoodOrderProductCategorySelectionList(convo.WaId, brandList[0], tenantId);
             }
             else
             {                
@@ -1419,11 +1621,12 @@ namespace Pekkish.PointOfSale.Api.Services
 
             _context.SaveChanges();
         }
-        private async Task ProductCategorySelectionFunction(AppWatiConversation convo, AppWatiOrder order, AppBrand brand)
+        private async Task ProductCategorySelectionFunction(AppWatiConversation convo, AppWatiOrder order, AppBrand brand, Guid tenantId)
         {            
             var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
 
             order.CurrentBrand = brand.Id;
+            _context.SaveChanges();
 
             if (categoryList.Count > 10)
             {
@@ -1431,7 +1634,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelectionText);
 
                 //Send Category List
-                await MessageFoodOrderProductCategorySelectionText(convo.WaId, brand);
+                await MessageFoodOrderProductCategorySelectionText(convo.WaId, brand, tenantId);
             }
             else
             {
@@ -1439,10 +1642,8 @@ namespace Pekkish.PointOfSale.Api.Services
                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelection);
 
                 //Send Category List
-                await MessageFoodOrderProductCategorySelectionList(convo.WaId, brand);
-            }
-
-            _context.SaveChanges();
+                await MessageFoodOrderProductCategorySelectionList(convo.WaId, brand, tenantId);
+            }            
         }
         private async Task ProductSelectionFunction(AppWatiConversation convo, AppWatiOrder order, AppProductCategory category)
         {            
@@ -1452,26 +1653,31 @@ namespace Pekkish.PointOfSale.Api.Services
             var buttonList = new List<InteractiveButtonMessageButton>();
 
             order.CurrentCategory = category.Id;
-            
-            //Send Category List
-            if (productList.Count > 9)
-            {
-                //Set Status to CAtegory Selection Text
-                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductSelectionText);
-
-                //Send Product Message Text
-                await MessageFoodOrderProductSelectionText(convo.WaId, category);
-            }
-            else
-            {
-                //Set Status to Product Selection
-                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductSelection);
-
-                //Send Product Message
-                await MessageFoodOrderProductSelectionList(convo.WaId, category);
-            }
-
             _context.SaveChanges();
+
+            //Send Product List
+            //Set Status to CAtegory Selection Text
+            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductSelectionText);
+
+            //Send Product Message Text
+            await MessageFoodOrderProductSelectionText(convo.WaId, category);
+
+            //if (productList.Count > 9)
+            //{
+            //    //Set Status to CAtegory Selection Text
+            //    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductSelectionText);
+
+            //    //Send Product Message Text
+            //    await MessageFoodOrderProductSelectionText(convo.WaId, category);
+            //}
+            //else
+            //{
+            //    //Set Status to Product Selection
+            //    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductSelection);
+
+            //    //Send Product Message
+            //    await MessageFoodOrderProductSelectionList(convo.WaId, category);
+            //}           
         }
     }
 }
