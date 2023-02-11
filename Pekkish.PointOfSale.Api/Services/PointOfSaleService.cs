@@ -331,7 +331,7 @@ namespace Pekkish.PointOfSale.Api.Services
                     }
                 }
 
-                return returnValue;
+                return returnValue.ToString();
             });
         }
         public async Task<bool> OrderIsMultiBrandGet(int orderId)
