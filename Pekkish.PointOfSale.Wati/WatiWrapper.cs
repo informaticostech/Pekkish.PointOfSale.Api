@@ -104,6 +104,17 @@ namespace Pekkish.PointOfSale.Wati
 
             return result;
         }
+        public async Task<HttpResponseMessage> TemplateMessageSend(string whatsAppNumber, TemplateMessageSendDto dto)
+        {
+            var serializer = new JavaScriptSerializer();
+            string endpoint = $"sendTemplateMessage?whatsappNumber={whatsAppNumber}";
+
+            dto = await FormatTemplateMessageSendDto(dto);
+
+            var result = await DataPost(endpoint, dto);
+
+            return result;
+        }
         public async Task<HttpResponseMessage> SessionMessageSend(string whatsAppNumber, string messageText)
         {
             var serializer = new JavaScriptSerializer();
@@ -175,6 +186,13 @@ namespace Pekkish.PointOfSale.Wati
                     button.Text = (button.Text.Length > 20) ? button.Text.Substring(0, 20) : button.Text;
                 }
 
+                return dto;
+            });
+        }
+        private async Task<TemplateMessageSendDto> FormatTemplateMessageSendDto(TemplateMessageSendDto dto)
+        {
+            return await Task.Run(() =>
+            {                
                 return dto;
             });
         }

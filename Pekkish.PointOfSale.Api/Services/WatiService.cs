@@ -50,6 +50,8 @@ namespace Pekkish.PointOfSale.Api.Services
             else
                 messageReply = message.Text.ToString();
 
+            //await MessageTemplateMessage(message.WaId);
+
             //Wati Duplicate Check
             var duplicateCheck = _context.AppWatiMessages.Where(x => x.WatiId == message.Id).ToList();
 
@@ -1018,6 +1020,23 @@ namespace Pekkish.PointOfSale.Api.Services
         #endregion
 
         #region WhatsApp Message Send
+        public async Task MessageTemplateMessage(string whatsappNumber)
+        { 
+            TemplateMessageSendDto dto = new TemplateMessageSendDto();
+            dto.Template_Name = "order_accepted_v3";
+            dto.Broadcast_Name = "Test";
+
+            var parameterList = new List<TemplateMessageParameter>
+            {
+                new TemplateMessageParameter { Name = "order_number", Value= "37" },
+                new TemplateMessageParameter { Name = "shop_name", Value= "Bibis" },
+                new TemplateMessageParameter { Name = "shop_whatsapp_url", Value= "https://wa.me/27839777068/" }
+            };
+
+            dto.Parameters = parameterList;
+
+            await _wati.TemplateMessageSend(whatsappNumber, dto);
+        }
         private async Task MessageWelcome(string whatsappNumber)
         {
             InteractiveListMessageDto welcome = new InteractiveListMessageDto();
