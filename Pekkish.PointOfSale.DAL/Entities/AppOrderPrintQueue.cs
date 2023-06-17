@@ -21,6 +21,8 @@ public partial class AppOrderPrintQueue
 
     public string Status { get; set; } = null!;
 
+    public bool IsCustomerReceipt { get; set; }
+
     public DateTime CreatedDate { get; set; }
 
     public Guid CreatedUser { get; set; }

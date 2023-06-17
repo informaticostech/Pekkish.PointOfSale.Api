@@ -379,6 +379,26 @@ namespace Pekkish.PointOfSale.Api.Services
                         }
                     }
                     #endregion
+
+                    #region Order Print Queue
+                    var printerName = _context.AppLocationBrands.SingleOrDefault(x => x.LocationId == order.LocationId && x.BrandId == item)?.PrinterName;
+
+                    if (printerName == null)
+                        printerName = "NOPRINTER";
+
+                    var printQueue = new AppOrderPrintQueue();
+                    printQueue.TenantId = watiOrder.TenantId; ;
+                    printQueue.OrderId = order.Id;
+                    printQueue.OrderRequestId = orderRequest.Id;
+                    printQueue.PrinterName = printerName;
+                    printQueue.Status = "S";
+                    printQueue.LocationId = order.LocationId;
+                    printQueue.BrandId = item;
+                    printQueue.IsCustomerReceipt = false;
+                    printQueue.CreatedDate = DateTime.Now;
+                    _context.AppOrderPrintQueues.Add(printQueue);
+                    _context.SaveChanges();
+                    #endregion
                 }
 
                 order.Brand = await OrderBrandGet(order.Id);
