@@ -59,6 +59,16 @@ public partial class AppWatiOrder
 
     public int? CurrentProductExtra { get; set; }
 
+    public int? CurrentExtraCount { get; set; }
+
+    public int? CurrentExtraCompleted { get; set; }
+
+    public int? CurentExtraOptionMin { get; set; }
+
+    public int? CurrentExtraOptionMax { get; set; }
+
+    public int? CurrentExtraOptionSelected { get; set; }
+
     public virtual AppLocation? Location { get; set; }
 
     public virtual AppPaymentMethod? PaymentMethod { get; set; }

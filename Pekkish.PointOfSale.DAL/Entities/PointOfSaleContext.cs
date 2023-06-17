@@ -15,6 +15,8 @@ public partial class PointOfSaleContext : DbContext
     {
     }
 
+    public virtual DbSet<AppWatiOrderDetailOption> AppWatiOrderDetailOptions { get; set; }
+
     public virtual DbSet<AbpAuditLog> AbpAuditLogs { get; set; }
 
     public virtual DbSet<AbpAuditLogAction> AbpAuditLogActions { get; set; }

@@ -1,7 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore.Metadata.Builders;
+﻿using MailKit.Search;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
 using Microsoft.IdentityModel.Tokens;
+using Nancy.Routing.Trie.Nodes;
 using Pekkish.PointOfSale.Api.Models.Wati;
 using Pekkish.PointOfSale.DAL.Entities;
 using Pekkish.PointOfSale.Wati;
@@ -67,6 +69,7 @@ namespace Pekkish.PointOfSale.Api.Services
                     || message.WaId == "27671324043"    //Nash
                     || message.WaId == "27760486780"    //Aneeq
                     || message.WaId == "27825600567"    //SB
+                    || message.WaId == "27604252417"    //Fatwah                    
                     )
                 {
                     //Only do automated when there is not a current operator assigned
@@ -405,28 +408,51 @@ namespace Pekkish.PointOfSale.Api.Services
         }
         private async Task<AppWatiOrder> FoodOrderDetailCreate(int orderId, AppProduct product, int quantity)
         {
-            return await Task.Run(async () =>
-            {
-                var order = _context.AppWatiOrders.Single(x => x.Id == orderId);
-                var orderDetail = new AppWatiOrderDetail();
+            var order = _context.AppWatiOrders.Single(x => x.Id == orderId);
+            var orderDetail = new AppWatiOrderDetail();
 
-                orderDetail.WatiOrderId = orderId;
-                orderDetail.BrandId = (int)order.CurrentBrand;
-                orderDetail.ProductId = product.Id;
-                orderDetail.Amount = product.Price;
-                orderDetail.Name = product.Name;
-                orderDetail.Quantity = quantity;                                
-                orderDetail.Comment = "";
+            orderDetail.WatiOrderId = orderId;
+            orderDetail.BrandId = (int)order.CurrentBrand;
+            orderDetail.ProductId = product.Id;
+            orderDetail.Amount = product.Price;
+            orderDetail.Name = product.Name;
+            orderDetail.Quantity = quantity;
+            orderDetail.Comment = "";
+            
+            _context.AppWatiOrderDetails.Add(orderDetail);
+            _context.SaveChanges();
 
-                //here. test product save. show product value 2 decimals.
+            order.CurrentOrderDetail = orderDetail.Id;
+            order.SubTotal = await FoodOrderTotalsGet(orderId);
+            _context.SaveChanges();
 
-                _context.AppWatiOrderDetails.Add(orderDetail);
-                _context.SaveChanges();
+            return order;
+        }
+        private async Task<AppWatiOrderDetail> FoodOrderDetailOptionCreate(int orderDetailId, AppProductExtraOption productExtraOption)
+        {
+            return await Task.Run(() =>
+            {                
+                var orderDetail = _context.AppWatiOrderDetails.Single(x => x.Id == orderDetailId);                
+                var orderDetailOption = new AppWatiOrderDetailOption();
+
+                orderDetailOption.WatiOrderDetailId = orderDetailId;
+                orderDetailOption.Name = productExtraOption.Name;
+                orderDetailOption.WatiOrderDetailId = orderDetailId;
+                orderDetailOption.Quantity = orderDetail.Quantity;
+                orderDetailOption.Price = productExtraOption.Price;
+                orderDetailOption.ProductExtraId = (int)productExtraOption.ProductExtraId;
+                orderDetailOption.ProductExtraOptionId = (int)productExtraOption.Id;                
                 
-                order.SubTotal = await FoodOrderTotalsGet(orderId);                
+                _context.AppWatiOrderDetailOptions.Add(orderDetailOption);
                 _context.SaveChanges();
 
-                return order;
+                if (productExtraOption.Price != 0)
+                {                    
+                    orderDetail.Amount += (productExtraOption.Price);
+                    _context.SaveChanges();                    
+                }
+
+                return orderDetail;
             });
         }
         private async Task<List<AppWatiOrderDetail>> FoodOrderCartGet(int orderId)
@@ -436,20 +462,23 @@ namespace Pekkish.PointOfSale.Api.Services
                 var result = (from Detail in _context.AppWatiOrderDetails
                               where Detail.WatiOrderId == orderId
                               select Detail).ToList();
-
                 return result;
             });
         }
         private async Task<decimal> FoodOrderTotalsGet(int orderId)
-        {
+        {            
             return await Task.Run(() =>
             {
-                var result = (from list in _context.AppWatiOrderDetails
-                              where list.WatiOrderId == orderId
-                              select new
-                              {
-                                  Total = list.Quantity * list.Amount
-                              }).Sum(x=>x.Total);
+                decimal result = 0;
+
+                var productList = (from list in _context.AppWatiOrderDetails
+                         where list.WatiOrderId == orderId
+                         select list).ToList();
+
+                Parallel.ForEach(productList, product =>
+                {
+                    result += product.Amount * product.Quantity;
+                });
 
                 return result;
             });
@@ -490,7 +519,7 @@ namespace Pekkish.PointOfSale.Api.Services
             order.CurrentBrand = brand.Id;
             _context.SaveChanges();
 
-            if (categoryList.Count > 10)
+            if (categoryList.Count >= 10)
             {
                 //Set Status to Brand Selection
                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CategorySelectionText);
@@ -540,7 +569,7 @@ namespace Pekkish.PointOfSale.Api.Services
             //    //Send Product Message
             //    await MessageFoodOrderProductSelectionList(convo.WaId, category);
             //}           
-        }
+        }        
 
         private async Task FoodOrderStatusSet(int id, WatiFoodOrderStatusEnum status)
         {
@@ -563,11 +592,13 @@ namespace Pekkish.PointOfSale.Api.Services
                 AppProduct product = new AppProduct();
                 AppProductExtra extra = new AppProductExtra();
                 List<AppBrand> brandList = new List<AppBrand>();
+                List<AppProductExtra> productExtraList = new List<AppProductExtra>();
                 var tenantId = new Guid();
                 int brandId = 0;
                 int categoryId = 0;
                 int productId = 0;
-                int extraId = 0;                
+                int extraId = 0;
+                int orderDetail = 0;
                 
                 #region Logistics
                 if (order.TenantId != null)
@@ -584,6 +615,11 @@ namespace Pekkish.PointOfSale.Api.Services
                     brand = await _pointOfSaleService.BrandItemGet(brandId);
                 }
 
+                if(order.CurrentOrderDetail!= null)
+                {
+                    orderDetail = (int)order.CurrentOrderDetail;
+                }
+
                 if (order.CurrentCategory != null)
                 {
                     categoryId = (int)order.CurrentCategory;
@@ -598,8 +634,8 @@ namespace Pekkish.PointOfSale.Api.Services
 
                 if (order.CurrentProductExtra != null)
                 {
-                    extraId = (int)order.CurrentProductExtra;
-                    
+                    extraId = (int)order.CurrentProductExtra;    
+                    extra = await _pointOfSaleService.ProductExtraItemGet(extraId);
                 }
                 #endregion
 
@@ -840,12 +876,12 @@ namespace Pekkish.PointOfSale.Api.Services
                         #region Product Add to Cart Confirm                                                   
                         switch (messageReply)
                         {
-                            case REPLY_ADD_TO_CART:
+                            case REPLY_ADD_TO_CART:                                
                                 //Set Status to Confirm Add To Cart
                                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.QuantityConfirm);
 
                                 //Send Quanity Confirmation
-                                await MessageFoodOrderProductQuantity(convo.WaId, product);
+                                await MessageFoodOrderProductQuantity(convo.WaId, product);                                
                                 break;
 
                             case REPLY_CANCEL:
@@ -876,11 +912,190 @@ namespace Pekkish.PointOfSale.Api.Services
 
                         var orderFromQuantityConfirm = await FoodOrderDetailCreate(order.Id, product, quantity);
 
-                        //Set Status to Category Selection
-                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                        //Check For Product Extra
+                        productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
 
-                        //Send Message Add More Products
-                        await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, orderFromQuantityConfirm);
+                        if (productExtraList.Count == 0)
+                        {
+                            //Set Status 
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                            //Send Message Add More Products
+                            await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, orderFromQuantityConfirm);
+                        }
+                        else
+                        {
+                            //Has extras
+                            extra = productExtraList[0];
+                            order.CurrentExtraCount = productExtraList.Count;
+                            order.CurrentExtraCompleted = 0;
+                            order.CurrentProductExtra = extra.Id;
+                            order.CurentExtraOptionMin = extra.Min;
+                            order.CurrentExtraOptionMax = extra.Max;
+                            order.CurrentExtraOptionSelected = 0;
+                            _context.SaveChanges();
+
+                            //Set Status to Confirm Add To Cart
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelection);
+
+                            //Send Message Product Extra
+                            await MessageFoodOrderProductExraNotification(convo.WaId, product, productExtraList);
+
+                            //Send Message First Product Exra                            
+                            await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                        }                        
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductExtraSelection:
+                        #region Product Extra Selection
+                        switch (messageReply)
+                        {
+                            case REPLY_EXTRA_NONE:
+                                //This extra completed
+                                order.CurrentExtraCompleted++;
+                                _context.SaveChanges();
+                                
+                                if (order.CurrentExtraCount > order.CurrentExtraCompleted)
+                                {
+                                    //More Extras to be selected                                            
+                                    productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
+                                    extra = productExtraList[(int)order.CurrentExtraCompleted];
+                                    order.CurrentProductExtra = extra.Id;
+                                    order.CurrentExtraOptionSelected = 0;
+                                    _context.SaveChanges();
+
+                                    await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                                }
+                                else
+                                {
+                                    // All Extras for product selected
+
+                                    //Set Status 
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                    //Send Message Add More Products
+                                    await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+                                }
+
+                                break;
+                            
+                            default:                                
+                                var extraOptionSelected = (await _pointOfSaleService.ProductExtraOptionList(extraId)).SingleOrDefault(x => x.Name == messageReply);
+
+                                if (extraOptionSelected == null)
+                                {
+                                    await MessageResponseUnexpected(convo.WaId);
+                                }
+                                else
+                                {
+                                    //Save Extra Option Selection
+                                    var orderDetailFromExtraConfirm = await FoodOrderDetailOptionCreate(orderDetail, extraOptionSelected);
+
+                                    //Set Total
+                                    order.SubTotal = await FoodOrderTotalsGet(order.Id);
+
+                                    //Add to extra completed Counter
+                                    order.CurrentExtraOptionSelected++;
+                                    _context.SaveChanges();
+
+
+
+                                    //Check if the same options needs to be shown again
+                                    if (order.CurrentExtraOptionSelected < order.CurrentExtraOptionMax)
+                                    {
+                                        //Set Status to Confirm Add To Cart
+                                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelectionMoreConfirm);
+
+                                        //Message Topping Status
+                                        await MessageFoodOrderProductExtraMoreQuestion(convo.WaId, extra, (int)order.CurrentExtraOptionSelected);
+                                    }
+                                    else
+                                    {
+                                        //Max Reached
+
+                                        order.CurrentExtraCompleted++;
+                                        _context.SaveChanges();
+
+                                        if (order.CurrentExtraCount > order.CurrentExtraCompleted)
+                                        {
+                                            //More Extras to be selected                                            
+                                            productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
+                                            extra = productExtraList[(int)order.CurrentExtraCompleted];
+                                            order.CurrentProductExtra = extra.Id;
+                                            order.CurrentExtraOptionSelected = 0;
+                                            _context.SaveChanges();
+
+                                            await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                                        }
+                                        else
+                                        {
+                                            // All Extras for product selected
+
+                                            //Set Status 
+                                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                            //Send Message Add More Products
+                                            await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+                                        }
+                                    }
+                                }
+                                break;
+                        }
+                        #endregion 
+
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductExtraSelectionMoreConfirm:
+                        #region Product Extra Selection
+                        switch (messageReply)
+                        {
+                            case REPLY_YES:
+                                //Set Status to Confirm Add To Cart
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelection);
+
+                                //Send Message Product Extra
+                                await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                                break;
+
+                            case REPLY_NO:
+                                order.CurrentExtraCompleted++;
+                                _context.SaveChanges();
+
+                                if (order.CurrentExtraCount > order.CurrentExtraCompleted)
+                                {
+                                    //More Extras to be selected                                            
+                                    productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
+                                    extra = productExtraList[(int)order.CurrentExtraCompleted];
+                                    order.CurrentProductExtra = extra.Id;
+                                    order.CurrentExtraOptionSelected = 0;
+                                    _context.SaveChanges();
+
+                                    //Set Status to Confirm Add To Cart
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelection);
+
+                                    //Send Message Product Extra - Next Extra
+                                    await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                                }
+                                else
+                                {
+                                    // All Extras for product selected
+
+                                    //Set Status 
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                    //Send Message Add More Products
+                                    await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+                                }                                
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                return;                                
+                        }
+                        _context.SaveChanges();
+
+                        
                         #endregion
                         break;
 
@@ -1020,7 +1235,7 @@ namespace Pekkish.PointOfSale.Api.Services
         #endregion
 
         #region WhatsApp Message Send
-        public async Task MessageTemplateMessage(string whatsappNumber)
+        private async Task MessageTemplateMessage(string whatsappNumber)
         { 
             TemplateMessageSendDto dto = new TemplateMessageSendDto();
             dto.Template_Name = "order_accepted_v3";
@@ -1531,6 +1746,107 @@ namespace Pekkish.PointOfSale.Api.Services
                 var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
             }            
         }
+        private async Task MessageFoodOrderProductExraNotification(string whatsappNumber, AppProduct product, List<AppProductExtra> productExtraList)
+        {
+            string message = "";
+
+            if (productExtraList.Count == 1)
+            {
+                message = $"Your selection has {productExtraList.Count} product extra choice:";
+                message += "\r\n";
+                message += productExtraList.First().Name;
+            }
+            else
+            {
+                message = $"Your selection has {productExtraList.Count} product extra choices:";
+                message += "\r\n";
+
+                foreach (var extra in productExtraList)
+                {
+                    message += extra.Name;
+                    message += "\r\n";
+                }                
+            }
+
+            await _wati.SessionMessageSend(whatsappNumber, message);
+        }
+        private async Task MessageFoodOrderProductExtraSelection(string whatsappNumber, AppProduct product, AppProductExtra productExtra, int optionSelected)
+        {
+            var message = new InteractiveListMessageDto();
+            var sectionList = new List<InteractiveListMessageSection>();            
+            var rowProductExtraList = new List<InteractivelistMessageSectionRow>();
+            var productExtraOptionList = await _pointOfSaleService.ProductExtraOptionList(productExtra.Id);
+                       
+            message.Header = product.Name;
+            message.Body = $"Please select from the following {productExtra.Name}:";
+            message.Footer = "";
+            message.ButtonText = $"{productExtra.Name}";
+
+            //Nothing to Select
+            if (productExtra.Min == 0)
+            {
+                rowProductExtraList.Add(new InteractivelistMessageSectionRow
+                {
+                    Title = REPLY_EXTRA_NONE
+                });
+            }
+            else
+            {
+                if (optionSelected >= productExtra.Min)
+                {
+                    rowProductExtraList.Add(new InteractivelistMessageSectionRow
+                    {
+                        Title = REPLY_EXTRA_NONE
+                    });
+                }
+            }
+
+            //Products Extra
+            foreach (var item in productExtraOptionList)
+            {
+                rowProductExtraList.Add(new InteractivelistMessageSectionRow
+                {
+                    Title = item.Name,
+                    Description = $"R {item.Price}"
+                });
+            }
+
+            //Complile Lists
+            sectionList.Add(new InteractiveListMessageSection
+            {
+                Title = $"{productExtra.Name}",
+                Rows = rowProductExtraList
+            });
+
+            message.Sections = sectionList;
+
+            var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
+        }
+        private async Task MessageFoodOrderProductExtraMoreQuestion(string whatsappNumber, AppProductExtra productExtra, int optionSelected)
+        {            
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+
+            #region Buttons
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_YES });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_NO });            
+            #endregion
+
+            headerText.Type = "Text";
+            headerText.Text = $"{productExtra.Name}";
+
+            messageText.Header = headerText;
+
+            messageText.Body += $"You have selected {optionSelected} out of a possible {productExtra.Max} {productExtra.Name}. Do you want to select more?";
+
+
+            messageText.Footer = "";
+
+            messageText.Buttons = buttonList;
+
+            var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+        }
         private async Task MessageFoodOrderProductQuantity(string whatsappNumber, AppProduct product)
         {
             var message = new InteractiveListMessageDto();
@@ -1652,8 +1968,21 @@ namespace Pekkish.PointOfSale.Api.Services
             foreach (var product in cartList)
             {
                 messageText.Body += $"{product.Quantity} X {product.Name}";
-                messageText.Body += "\r\n";
-                messageText.Body += $"  R{product.Quantity * product.Amount}";
+                messageText.Body += "\r\n";                
+
+                var productExtraOptionList = (from Option in _context.AppWatiOrderDetailOptions
+                                              where Option.WatiOrderDetailId == product.Id
+                                              select Option).ToList();
+
+                foreach(var extraOption in productExtraOptionList)
+                {
+                    //var extra = _context.AppProductExtras.Single(x => x.Id == extraOption.ProductExtraId);
+
+                    messageText.Body += $"    {extraOption.Name}";
+                    messageText.Body += "\r\n";
+                }
+
+                messageText.Body += $"    R{product.Quantity * product.Amount}";
                 messageText.Body += "\r\n";
                 messageText.Body += "\r\n";
             }

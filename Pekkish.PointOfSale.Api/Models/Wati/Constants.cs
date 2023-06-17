@@ -32,12 +32,14 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public const string REPLY_PAYMENT_EFT = "EFT";
         public const string REPLY_HELP = "help";
         public const string REPLY_RESTART = "restart";
-        
+        public const string REPLY_EXTRA_NONE = "None / Nothing";
+        //public const string REPLY_EXTRA_NONE_MORE = "None / Nothing More";
+
         public enum WatiConversationStatusEnum { Initialised = 1, InProgress, Completed, Expired, Cancelled }
         public enum WatiConversationTypeEnum { FoodOrder = 1, ChatToHuman, BecomeVendor }
         public enum WatiFoodOrderStatusEnum { VendorSelection = 1, CategorySelection, ProductSelection, ProductAddToCardConfirm, ProductExtraSelection, 
             ProductMoreCheckoutConfirm, VendorLanding, OrderDateConfirm, OrderFulfillmentConfirm, OrderPayMethodConfirm, OrderSeastingAreaConfirm, BrandSelection, 
-            CategorySelectionText, ProductSelectionText, QuantityConfirm, CancelConfirm, Cancelled, Completed }
+            CategorySelectionText, ProductSelectionText, QuantityConfirm, CancelConfirm, Cancelled, Completed, ProductExtraSelectionMoreConfirm }
 
         public enum PosOrderStatusEnum
         {
