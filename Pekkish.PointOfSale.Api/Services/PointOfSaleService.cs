@@ -1,4 +1,5 @@
 ﻿using Microsoft.IdentityModel.Tokens;
+using Pekkish.PointOfSale.DAL.Context;
 using Pekkish.PointOfSale.DAL.Entities;
 using System.Dynamic;
 using static Pekkish.PointOfSale.Api.Models.PointOfSale.Constants;

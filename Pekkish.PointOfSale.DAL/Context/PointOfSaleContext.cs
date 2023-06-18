@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Pekkish.PointOfSale.DAL.Entities;
 
-namespace Pekkish.PointOfSale.DAL.Entities;
+namespace Pekkish.PointOfSale.DAL.Context;
 
 public partial class PointOfSaleContext : DbContext
 {
@@ -14,7 +15,8 @@ public partial class PointOfSaleContext : DbContext
         : base(options)
     {
     }
-    
+
+    public virtual DbSet<AppWatiUser> AppWatiUsers { get; set; }
     public virtual DbSet<AppWatiOrderDetailOption> AppWatiOrderDetailOptions { get; set; }
 
     public virtual DbSet<AbpAuditLog> AbpAuditLogs { get; set; }

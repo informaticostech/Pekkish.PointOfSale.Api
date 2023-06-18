@@ -6,7 +6,7 @@ using Microsoft.Identity.Web;
 using Pekkish.PointOfSale.Api;
 using Pekkish.PointOfSale.Api.Models.Wati;
 using Pekkish.PointOfSale.Api.Services;
-using Pekkish.PointOfSale.DAL.Entities;
+using Pekkish.PointOfSale.DAL.Context;
 
 var builder = WebApplication.CreateBuilder(args);
 
