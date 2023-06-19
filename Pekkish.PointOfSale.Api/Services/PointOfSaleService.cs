@@ -42,12 +42,12 @@ namespace Pekkish.PointOfSale.Api.Services
             return await Task.Run(() =>
             {
                 var result = (from SaasTenants in _context.SaasTenants
-                             from TenantInfos in _context.AppTenantInfos
+                              from TenantInfos in _context.AppTenantInfos
 
-                             where SaasTenants.ActivationState == (int)TenantActivationStatus.Active
-                             
-                             orderby TenantInfos.Name
-                             select TenantInfos).Distinct().ToList();
+                              where SaasTenants.ActivationState == (int)TenantActivationStatus.Active
+                              where TenantInfos.IsActiveWhatsApp == true
+                              orderby TenantInfos.Name
+                              select TenantInfos).Distinct().ToList();
 
                 return result;
             });            
@@ -241,6 +241,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 var watiConversation = _context.AppWatiConversations.Single(x => x.Id == watiOrder.WatiConversationId);
                 var orderDetail = new AppOrderDetail();
                 var orderDetailOption = new AppOrderDetailOption();
+                var paymentMethod = _context.AppPaymentMethods.Single(x => x.Id == watiOrder.PaymentMethodId).Name;
 
                 #region POS Order
                 var order = new AppOrder();
@@ -265,6 +266,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 order.PaidChange = 0;
                 order.ExternalId = watiOrder.WaId;   
                 order.ExternalCustomerName = watiOrder.Name;
+                order.ExternalPayMethod = paymentMethod;
                 order.IsMultiBrand = false;
                 order.CreationTime = DateTime.Now;
                 order.IsDeleted = false;

@@ -1331,6 +1331,7 @@ namespace Pekkish.PointOfSale.Api.Services
             welcome.Footer = "";
             welcome.ButtonText = "Choose Vendor";
 
+
             foreach(var vendor in vendorList)
             {
                 rowList.Add(new InteractivelistMessageSectionRow
