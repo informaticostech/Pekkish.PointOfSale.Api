@@ -252,7 +252,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 order.SalesChannelId = (int)PosSalesChannelEnum.WhatsAppPekkish;
                 order.PaymentMethodId = (int)PosPaymentTypeEnum.PayLater;
                 order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Pickup;      
-                order.EffectiveDate = DateTime.Now.AddMinutes(20);
+                order.EffectiveDate = DateTime.Now;
                 order.SubTotal = total;
                 order.Total = total;
                 order.DeliveryFee = 0;
