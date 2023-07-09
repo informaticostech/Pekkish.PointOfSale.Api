@@ -57,6 +57,8 @@ public partial class AppWatiOrder
 
     public int? CurrentProduct { get; set; }
 
+    public string? CurrentProductComment { get; set; }
+
     public int? CurrentProductExtra { get; set; }
 
     public int? CurrentExtraCount { get; set; }

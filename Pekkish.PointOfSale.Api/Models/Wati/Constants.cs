@@ -15,7 +15,7 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public const string REPLY_FOOD_ORDER = "Order Food";
         public const string REPLY_CHAT_TO_HUMAN = "Chat to a human";
         public const string REPLY_BECOME_A_VENDOR = "Become a food vendor";
-        public const string REPLY_VENDOR_ORDER_FOOD = "Feed Me!";
+        public const string REPLY_VENDOR_ORDER_FOOD = "Place Order";
         public const string REPLY_ADD_TO_CART = "Add to Cart";
         public const string REPLY_CANCEL = "Cancel";
         public const string REPLY_BACK_VENDOR = "Go back to Vendor";
@@ -39,7 +39,8 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public enum WatiConversationTypeEnum { FoodOrder = 1, ChatToHuman, BecomeVendor }
         public enum WatiFoodOrderStatusEnum { VendorSelection = 1, CategorySelection, ProductSelection, ProductAddToCardConfirm, ProductExtraSelection, 
             ProductMoreCheckoutConfirm, VendorLanding, OrderDateConfirm, OrderFulfillmentConfirm, OrderPayMethodConfirm, OrderSeastingAreaConfirm, BrandSelection, 
-            CategorySelectionText, ProductSelectionText, QuantityConfirm, CancelConfirm, Cancelled, Completed, ProductExtraSelectionMoreConfirm }
+            CategorySelectionText, ProductSelectionText, QuantityConfirm, CancelConfirm, Cancelled, Completed, ProductExtraSelectionMoreConfirm, ProductCommentQuestion, 
+            ProductCommentConfirm }
 
         public enum PosOrderStatusEnum
         {
