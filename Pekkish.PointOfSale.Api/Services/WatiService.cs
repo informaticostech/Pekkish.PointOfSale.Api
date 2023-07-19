@@ -558,7 +558,7 @@ namespace Pekkish.PointOfSale.Api.Services
             await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductSelectionText);
 
             //Send Product Message Text
-            await MessageFoodOrderProductSelectionText(convo.WaId, category);
+            await MessageFoodOrderProductSelectionText(convo.WaId, category, (Guid)order.TenantId);
 
             //if (productList.Count > 9)
             //{
@@ -1312,7 +1312,7 @@ namespace Pekkish.PointOfSale.Api.Services
             welcome.Body += "\r\n";
             welcome.Body += $"Please note: ";
             welcome.Body += "\r\n";
-            welcome.Body += $"At any moment during conversation you can type '{REPLY_RESTART}' to start over, or '{REPLY_HELP}' to speak to a member of our team.";
+            welcome.Body += $"At any moment during this conversation you can type '{REPLY_RESTART}' to start over, or '{REPLY_HELP}' to speak to a member of our team.";
             
             welcome.Footer = "";
             welcome.ButtonText = "Choose Option";
@@ -1321,20 +1321,20 @@ namespace Pekkish.PointOfSale.Api.Services
             {
                 rowList.Add(new InteractivelistMessageSectionRow
                 {
-                    Title = "Order Food",
+                    Title = REPLY_FOOD_ORDER,
                     Description = ""
                 });
             }
 
             rowList.Add(new InteractivelistMessageSectionRow
             {
-                Title = "Chat to a human",
+                Title = REPLY_CHAT_TO_HUMAN,
                 Description = "Chat to a member our team"
             });
 
             rowList.Add(new InteractivelistMessageSectionRow
             {
-                Title = "Become a food vendor",
+                Title = REPLY_BECOME_A_VENDOR,
                 Description = "Start your own Online Store / online Point of Sale"
             });
 
@@ -1506,10 +1506,20 @@ namespace Pekkish.PointOfSale.Api.Services
             var brandList = await _pointOfSaleService.BrandList(tenantId);
 
             message.Header = tenant.NameShort;
-            message.Body = "Please select from the following brands:";
-            message.Footer = "";
-            message.ButtonText = "Choose Brand";
 
+            if (tenant.LabelBrand.IsNullOrEmpty())
+            {
+                message.Body = "Please select from the following brands:";
+                message.ButtonText = "Choose Brand";                
+            }
+            else
+            {
+                message.Body = $"Please select from the following {tenant.LabelBrand.ToLower()}s:";
+                message.ButtonText = $"Choose {tenant.LabelBrand}";
+            }
+
+            message.Footer = "";
+            
             foreach (var item in brandList)
             {
                 rowList.Add(new InteractivelistMessageSectionRow
@@ -1537,11 +1547,22 @@ namespace Pekkish.PointOfSale.Api.Services
             var rowBackList = new List<InteractivelistMessageSectionRow>();
             var brandList = await _pointOfSaleService.BrandList(tenantId);
             var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
+            var tenant = _context.AppTenantInfos.Single(x => x.TenantId == tenantId);
 
             message.Header = brand.NameShort.ToString();
-            message.Body = "Please select from the following categories:";
-            message.Footer = "";
-            message.ButtonText = "Choose Category";
+
+            if (tenant.LabelCategory.IsNullOrEmpty())
+            {
+                message.Body = "Please select from the following categories:";
+                message.ButtonText = "Choose Category";
+            }
+            else
+            {
+                message.Body = $"Please select from the following {tenant.LabelCategory.ToLower()}s:";
+                message.ButtonText = $"Choose {tenant.LabelCategory}";
+            }
+           
+            message.Footer = "";            
 
             if (brandList.Count == 1)
             {
@@ -1561,17 +1582,34 @@ namespace Pekkish.PointOfSale.Api.Services
             else
             {
                 //Back to Brands
-                rowBackList.Add(new InteractivelistMessageSectionRow
+                if (tenant.LabelBrand.IsNullOrEmpty())
                 {
-                    Title = REPLY_BACK_BRAND,
-                    Description = ""
-                });
+                    rowBackList.Add(new InteractivelistMessageSectionRow
+                    {
+                        Title = REPLY_BACK_BRAND,
+                        Description = ""
+                    });
 
-                sectionList.Add(new InteractiveListMessageSection
+                    sectionList.Add(new InteractiveListMessageSection
+                    {
+                        Title = $"Brands",
+                        Rows = rowBackList
+                    });
+                }
+                else
                 {
-                    Title = $"Brands",
-                    Rows = rowBackList
-                });
+                    rowBackList.Add(new InteractivelistMessageSectionRow
+                    {
+                        Title = $"Go back to {tenant.LabelBrand} list",
+                        Description = ""
+                    });
+
+                    sectionList.Add(new InteractiveListMessageSection
+                    {
+                        Title = $"{tenant.LabelBrand}",
+                        Rows = rowBackList
+                    });
+                }
             }
             
             foreach (var item in categoryList)
@@ -1598,6 +1636,7 @@ namespace Pekkish.PointOfSale.Api.Services
             string message;
             var categoryList = await _pointOfSaleService.ProductCategoryList(brand.Id);
             var brandList = await _pointOfSaleService.BrandList(tenantId);
+            var tenant = _context.AppTenantInfos.Single(x => x.TenantId == tenantId);
 
             message = brand.Name.Replace('&', '_').ToUpper();
             message += "\r\n";
@@ -1616,14 +1655,27 @@ namespace Pekkish.PointOfSale.Api.Services
             }
             else
             {
-                message += "Brands:";
-                message += "\r\n";
-                message += $"0 {REPLY_BACK_BRAND}";
+                if (tenant.LabelBrand.IsNullOrEmpty())
+                {
+                    message += "Brands:";
+                    message += "\r\n";
+                    message += $"0 {REPLY_BACK_BRAND}";
+                }
+                else
+                {
+                    message += $"{tenant.LabelBrand}s:";
+                    message += "\r\n";
+                    message += $"0 Go back to {tenant.LabelBrand}";
+                }                
             }
 
             message += "\r\n";
             message += "\r\n";
-            message += "Categories:";
+            if (tenant.LabelCategory.IsNullOrEmpty())            
+                message += "Categories:";
+            else
+                message += $"{tenant.LabelCategory}:";
+
             message += "\r\n";
 
             for (int c = 0; c < categoryList.Count; c++)
@@ -1681,10 +1733,11 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, message);
         }
-        private async Task MessageFoodOrderProductSelectionText(string whatsappNumber, AppProductCategory category)
+        private async Task MessageFoodOrderProductSelectionText(string whatsappNumber, AppProductCategory category, Guid tenantId)
         {
             string message = "";
             var productList = await _pointOfSaleService.ProductList(category.Id);
+            var tenant = _context.AppTenantInfos.Single(x => x.TenantId == tenantId);
 
             message = category.Name.Replace('&', '_').ToUpper();
             message += "\r\n";
@@ -1692,9 +1745,20 @@ namespace Pekkish.PointOfSale.Api.Services
             message += "Please enter the number on the left hand side of your selection.";
             message += "\r\n";
             message += "\r\n";
-            message += "Categories:";
-            message += "\r\n";
-            message += $"0 {REPLY_BACK_CATEGORY}";
+
+            if (tenant.LabelCategory.IsNullOrEmpty())
+            {
+                message += "Categories:";
+                message += "\r\n";
+                message += $"0 {REPLY_BACK_CATEGORY}";
+            }
+            else
+            {
+                message += $"{tenant.LabelCategory}:";
+                message += "\r\n";
+                message += $"0 Go back to {tenant.LabelCategory} list";
+            }
+
             message += "\r\n";
             message += "\r\n";
             message += "Products:";

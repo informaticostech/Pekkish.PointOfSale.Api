@@ -12,9 +12,9 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public const string MESSAGE_TYPE_INTERACTIVE = "interactive";
         public const string MESSAGE_TYPE_TEXT = "text";
         public const string CANCELLED_BY_USER = "Cancelled by User";
-        public const string REPLY_FOOD_ORDER = "Order Food";
+        public const string REPLY_FOOD_ORDER = "Order from a vendor";
         public const string REPLY_CHAT_TO_HUMAN = "Chat to a human";
-        public const string REPLY_BECOME_A_VENDOR = "Become a food vendor";
+        public const string REPLY_BECOME_A_VENDOR = "Become a vendor";
         public const string REPLY_VENDOR_ORDER_FOOD = "Place Order";
         public const string REPLY_ADD_TO_CART = "Add to Cart";
         public const string REPLY_CANCEL = "Cancel";
