@@ -304,7 +304,744 @@ namespace Pekkish.PointOfSale.Api.Services
                 
                 return watiMessage;
             });
-        }       
+        }
+        private async Task FoodOrderProcess(SessionMessageReceiveDto message, AppWatiConversation convo, string messageReply)
+        {
+            if (convo.WatiOrderid != null)
+            {
+                var order = _context.AppWatiOrders.Single(x => x.Id == (int)convo.WatiOrderid);
+                AppTenantInfo tenant = new AppTenantInfo();
+                AppBrand brand = new AppBrand();
+                AppProductCategory category = new AppProductCategory();
+                AppProduct product = new AppProduct();
+                AppProductExtra extra = new AppProductExtra();
+                List<AppBrand> brandList = new List<AppBrand>();
+                List<AppProductExtra> productExtraList = new List<AppProductExtra>();
+                var tenantId = new Guid();
+                int brandId = 0;
+                int categoryId = 0;
+                int productId = 0;
+                int extraId = 0;
+                int orderDetail = 0;
+
+                #region Logistics
+                if (order.TenantId != null)
+                {
+                    tenant = _context.AppTenantInfos.Single(x => x.TenantId == order.TenantId);
+                    tenantId = (Guid)order.TenantId;
+
+                    brandList = await _pointOfSaleService.BrandList(tenantId);
+                }
+
+                if (order.CurrentBrand != null)
+                {
+                    brandId = (int)order.CurrentBrand;
+                    brand = await _pointOfSaleService.BrandItemGet(brandId);
+                }
+
+                if (order.CurrentOrderDetail != null)
+                {
+                    orderDetail = (int)order.CurrentOrderDetail;
+                }
+
+                if (order.CurrentCategory != null)
+                {
+                    categoryId = (int)order.CurrentCategory;
+                    category = await _pointOfSaleService.ProductCategoryItemGet(categoryId);
+                }
+
+                if (order.CurrentProduct != null)
+                {
+                    productId = (int)order.CurrentProduct;
+                    product = await _pointOfSaleService.ProductItemGet(productId);
+                }
+
+                if (order.CurrentProductExtra != null)
+                {
+                    extraId = (int)order.CurrentProductExtra;
+                    extra = await _pointOfSaleService.ProductExtraItemGet(extraId);
+                }
+                #endregion
+
+                switch (order.WatiOrderStatusId)
+                {
+                    case (int)WatiFoodOrderStatusEnum.VendorSelection:
+                        #region Vendor Selection                        
+                        var tenantSelected = (await _pointOfSaleService.VendorList()).SingleOrDefault(x => x.Name == messageReply);
+
+                        if (tenantSelected == null)
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                        }
+                        else
+                        {
+                            var locationList = await _pointOfSaleService.LocationList((Guid)tenantSelected.TenantId);
+
+                            if (locationList.Count == 1)
+                                order.LocationId = locationList[0].Id;
+                            else
+                            {
+                                //TODO: Location Selection
+                            }
+
+                            order.TenantId = tenantSelected.TenantId;
+                            _context.SaveChanges();
+
+                            if (order.TenantId != null)
+                            {
+                                //Set Status Vendor Landing
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
+
+                                //Message welcome message
+                                await MessageFoodOrderVendorWelcome(convo.WaId, (Guid)order.TenantId, tenantSelected);
+                            }
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.VendorLanding:
+                        #region Vendor Landing                       
+                        switch (messageReply)
+                        {
+                            case REPLY_VENDOR_ORDER_FOOD:
+                                //Brand or Category Selection
+                                await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);
+                                break;
+
+                            case REPLY_CANCEL:
+                                //Set status Vendor Selction
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorSelection);
+
+                                //Send Vendor List
+                                await MessageFoodOrderVendorSelection(convo.WaId);
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                return;
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.BrandSelection:
+                        #region Brand Selection
+                        var brandSelected = (await _pointOfSaleService.BrandList(tenantId)).SingleOrDefault(x => x.Name == messageReply);
+
+                        if (brandSelected == null)
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                        }
+                        else
+                        {
+                            await ProductCategorySelectionFunction(convo, order, brandSelected, tenantId);
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.CategorySelection:
+                        #region Category Selection                                              
+                        switch (messageReply)
+                        {
+                            case REPLY_BACK_BRAND:
+                                //Go Back to Brand List
+                                //Set Status to Brand Selection
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.BrandSelection);
+
+                                //Send Brand List
+                                await MessageFoodOrderBrandSelection(convo.WaId, tenantId, tenant);
+                                break;
+
+                            case REPLY_BACK_VENDOR:
+                                //Go back to Vendor Landing
+                                //Set Status Vendor Landing
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
+
+                                //Message welcome message
+                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant);
+
+                                break;
+
+                            default:
+                                var categorySelected = (await _pointOfSaleService.ProductCategoryList(brandId)).SingleOrDefault(x => x.Name == messageReply);
+
+                                if (categorySelected == null)
+                                {
+                                    await MessageResponseUnexpected(convo.WaId);
+                                }
+                                else
+                                {
+                                    await ProductSelectionFunction(convo, order, categorySelected);
+                                }
+                                break;
+                        }
+                        #endregion 
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.CategorySelectionText:
+                        #region Product Selection Text                                                
+                        int categorySelection;
+
+                        try
+                        {
+                            categorySelection = Convert.ToInt32(messageReply);
+                        }
+                        catch
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                            return;
+                        }
+
+                        if (categorySelection == 0)
+                        {
+                            if (brandList.Count == 1)
+                            {
+                                //Go back to Vendor Landing
+                                //Set Status Vendor Landing
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
+
+                                //Message welcome message
+                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant);
+                            }
+                            else
+                            {
+                                //Go Back to Brand List
+                                //Set Status to Brand Selection
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.BrandSelection);
+
+                                //Send Brand List
+                                await MessageFoodOrderBrandSelection(convo.WaId, tenantId, tenant);
+
+                            }
+                        }
+                        else
+                        {
+                            var categoryFromText = (await _pointOfSaleService.ProductCategoryList(brandId))[categorySelection - 1];
+
+                            await ProductSelectionFunction(convo, order, categoryFromText);
+                        }
+
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductSelection:
+                        #region Product Selection
+
+                        if (messageReply == REPLY_BACK_CATEGORY)
+                        {
+                            await ProductCategorySelectionFunction(convo, order, brand, tenantId);
+                        }
+                        else
+                        {
+                            var productSelected = (await _pointOfSaleService.ProductList(categoryId)).SingleOrDefault(x => x.Name == messageReply);
+
+                            if (productSelected == null)
+                            {
+                                await MessageResponseUnexpected(convo.WaId);
+                            }
+                            else
+                            {
+                                order.CurrentProduct = product.Id;
+                                _context.SaveChanges();
+
+                                //Set Status to Brand Selection
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductAddToCardConfirm);
+
+                                //Send Product Message
+                                await MessageFoodOrderProductConfirmation(convo.WaId, productSelected);
+                            }
+                        }
+
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductSelectionText:
+                        #region Product Selection Text
+                        int productSelection;
+
+                        try
+                        {
+                            productSelection = Convert.ToInt32(messageReply);
+                        }
+                        catch
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                            return;
+                        }
+
+                        if (productSelection == 0)
+                        {
+                            await ProductCategorySelectionFunction(convo, order, brand, tenantId);
+                        }
+                        else
+                        {
+                            var productFromText = (await _pointOfSaleService.ProductList(categoryId))[productSelection - 1];
+
+                            if (productFromText == null)
+                            {
+                                await MessageResponseUnexpected(convo.WaId);
+                                return;
+                            }
+
+                            //Set Status to Confirm Add To Cart
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductAddToCardConfirm);
+
+                            //Send Product Message
+                            await MessageFoodOrderProductConfirmation(convo.WaId, productFromText);
+
+                            order.CurrentProduct = productFromText.Id;
+                            _context.SaveChanges();
+                        }
+
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductAddToCardConfirm:
+                        #region Product Add to Cart Confirm                                                   
+                        switch (messageReply)
+                        {
+                            case REPLY_ADD_TO_CART:
+
+                                //Set Status to Confirm Add To Cart
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.QuantityConfirm);
+
+                                //Send Quanity Confirmation
+                                await MessageFoodOrderProductQuantity(convo.WaId, product);
+                                break;
+
+                            case REPLY_CANCEL:
+                                //Send Product Selection
+                                await ProductSelectionFunction(convo, order, category);
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                break;
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductCommentQuestion:
+                        #region Product Add to Cart Confirm                                                   
+                        switch (messageReply)
+                        {
+                            case REPLY_YES:
+                                //Set Status to Confirm Product Comment
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductCommentConfirm);
+
+                                //Send Comment Confirmation
+                                await MessageFoodOrderProductCommentConfirm(convo.WaId);
+                                break;
+
+                            case REPLY_NO:
+                                
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                break;
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductCommentConfirm:
+                        #region Product Product Confirm                                                                           
+                        order.CurrentProductComment = messageReply;
+                        _context.SaveChanges();
+
+                        //Set Status to Confirm Product Comment
+                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.QuantityConfirm);
+
+                        //Send Quanity Confirmation
+                        await MessageFoodOrderProductQuantity(convo.WaId, product);
+
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.QuantityConfirm:
+                        #region Quantity Confirm
+                        int quantity;
+
+                        try
+                        {
+                            quantity = Convert.ToInt16(messageReply);
+                        }
+                        catch
+                        {
+                            await MessageResponseUnexpected(convo.WaId);
+                            return;
+                        }
+
+                        var orderFromQuantityConfirm = await FoodOrderDetailCreate(order.Id, product, quantity, order.CurrentProductComment);
+
+                        //Check For Product Extra
+                        productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
+
+                        if (productExtraList.Count == 0)
+                        {
+                            if (tenant.IsWhatsAppSpecialInstruction)
+                            {
+                                //Set Status to Confirm Add To Cart
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductCommentQuestion);
+
+                                //Send CommentConfirmation
+                                await MessageFoodOrderProductCommentQuestion(convo.WaId, product);
+                            }
+                            else
+                            {
+                                //Set Status 
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                //Send Message Add More Products
+                                await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+                            }
+                        }
+                        else
+                        {
+                            //Has extras
+                            extra = productExtraList[0];
+                            order.CurrentExtraCount = productExtraList.Count;
+                            order.CurrentExtraCompleted = 0;
+                            order.CurrentProductExtra = extra.Id;
+                            order.CurentExtraOptionMin = extra.Min;
+                            order.CurrentExtraOptionMax = extra.Max;
+                            order.CurrentExtraOptionSelected = 0;
+                            _context.SaveChanges();
+
+                            //Set Status to Confirm Add To Cart
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelection);
+
+                            //Send Message Product Extra
+                            await MessageFoodOrderProductExraNotification(convo.WaId, product, productExtraList);
+
+                            //Send Message First Product Exra                            
+                            await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductExtraSelection:
+                        #region Product Extra Selection
+                        switch (messageReply)
+                        {
+                            case REPLY_EXTRA_NONE:
+                                //This extra completed
+                                order.CurrentExtraCompleted++;
+                                _context.SaveChanges();
+
+                                if (order.CurrentExtraCount > order.CurrentExtraCompleted)
+                                {
+                                    //More Extras to be selected                                            
+                                    productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
+                                    extra = productExtraList[(int)order.CurrentExtraCompleted];
+                                    order.CurrentProductExtra = extra.Id;
+                                    order.CurrentExtraOptionSelected = 0;
+                                    _context.SaveChanges();
+
+                                    await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                                }
+                                else
+                                {
+                                    // All Extras for product selected
+
+                                    if (tenant.IsWhatsAppSpecialInstruction)
+                                    {
+                                        //Set Status to Confirm Add To Cart
+                                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductCommentQuestion);
+
+                                        //Send CommentConfirmation
+                                        await MessageFoodOrderProductCommentQuestion(convo.WaId, product);
+                                    }
+                                    else
+                                    {
+                                        //Set Status 
+                                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                        //Send Message Add More Products
+                                        await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+                                    }
+                                }
+
+                                break;
+
+                            default:
+                                var extraOptionSelected = (await _pointOfSaleService.ProductExtraOptionList(extraId)).SingleOrDefault(x => x.Name == messageReply);
+
+                                if (extraOptionSelected == null)
+                                {
+                                    await MessageResponseUnexpected(convo.WaId);
+                                }
+                                else
+                                {
+                                    //Save Extra Option Selection
+                                    var orderDetailFromExtraConfirm = await FoodOrderDetailOptionCreate(orderDetail, extraOptionSelected);
+
+                                    //Set Total
+                                    order.SubTotal = await FoodOrderTotalsGet(order.Id);
+
+                                    //Add to extra completed Counter
+                                    order.CurrentExtraOptionSelected++;
+                                    _context.SaveChanges();
+
+
+
+                                    //Check if the same options needs to be shown again
+                                    if (order.CurrentExtraOptionSelected < order.CurrentExtraOptionMax)
+                                    {
+                                        //Set Status to Confirm Add To Cart
+                                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelectionMoreConfirm);
+
+                                        //Message Topping Status
+                                        await MessageFoodOrderProductExtraMoreQuestion(convo.WaId, extra, (int)order.CurrentExtraOptionSelected);
+                                    }
+                                    else
+                                    {
+                                        //Max Reached
+
+                                        order.CurrentExtraCompleted++;
+                                        _context.SaveChanges();
+
+                                        if (order.CurrentExtraCount > order.CurrentExtraCompleted)
+                                        {
+                                            //More Extras to be selected                                            
+                                            productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
+                                            extra = productExtraList[(int)order.CurrentExtraCompleted];
+                                            order.CurrentProductExtra = extra.Id;
+                                            order.CurrentExtraOptionSelected = 0;
+                                            _context.SaveChanges();
+
+                                            await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                                        }
+                                        else
+                                        {
+                                            // All Extras for product selected
+
+                                            if (tenant.IsWhatsAppSpecialInstruction)
+                                            {
+                                                //Set Status to Confirm Add To Cart
+                                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductCommentQuestion);
+
+                                                //Send CommentConfirmation
+                                                await MessageFoodOrderProductCommentQuestion(convo.WaId, product);
+                                            }
+                                            else
+                                            {
+                                                //Set Status 
+                                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                                //Send Message Add More Products
+                                                await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+                                            }
+                                        }
+                                    }
+                                }
+                                break;
+                        }
+                        #endregion 
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductExtraSelectionMoreConfirm:
+                        #region Product Extra Selection
+                        switch (messageReply)
+                        {
+                            case REPLY_YES:
+                                //Set Status to Confirm Add To Cart
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelection);
+
+                                //Send Message Product Extra
+                                await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                                break;
+
+                            case REPLY_NO:
+                                order.CurrentExtraCompleted++;
+                                _context.SaveChanges();
+
+                                if (order.CurrentExtraCount > order.CurrentExtraCompleted)
+                                {
+                                    //More Extras to be selected                                            
+                                    productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
+                                    extra = productExtraList[(int)order.CurrentExtraCompleted];
+                                    order.CurrentProductExtra = extra.Id;
+                                    order.CurrentExtraOptionSelected = 0;
+                                    _context.SaveChanges();
+
+                                    //Set Status to Confirm Add To Cart
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelection);
+
+                                    //Send Message Product Extra - Next Extra
+                                    await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
+                                }
+                                else
+                                {
+                                    // All Extras for product selected
+
+                                    //Set Status 
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                    //Send Message Add More Products
+                                    await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+                                }
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                return;
+                        }
+                        _context.SaveChanges();
+
+
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm:
+                        #region Product More Checkout Confirm
+                        switch (messageReply)
+                        {
+                            case REPLY_ADD_MORE_PRODUCTS:
+                                //Brand or Category Selection                                
+                                await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);
+                                break;
+
+                            case REPLY_VIEW_CART:
+                                //Set Status View Cart
+                                //Status alread here
+
+                                //Send Message View Cart
+                                await MessageFoodOrderMoreProductsConfirmationRemixViewCart(convo.WaId, order);
+                                break;
+
+                            case REPLY_CHECKOUT:
+                                //Set Status View Cart
+                                //await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.OrderConfirm);
+
+                                //Send Message View Cart
+                                await MessageFoodOrderMoreProductsConfirmationRemixCheckOut(convo.WaId, order);
+                                break;
+
+                            case REPLY_CANCEL_ORDER:
+                                //Set Status Cancel Confirm
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CancelConfirm);
+
+                                //Send Message Cancel Confirm
+                                await MessageFoodOrderCancelConfirmation(convo.WaId, order);
+                                break;
+
+                            case REPLY_YES:                                
+                                order.PaymentMethodId = (int)PosPaymentTypeEnum.PayLater;
+                                _context.SaveChanges();
+
+                                var saveTotal = await FoodOrderTotalsGet(order.Id);
+                                var productList = await FoodOrderCartGet(order.Id);
+
+                                var result = await _pointOfSaleService.OrderSave(order.Id, saveTotal, productList);
+
+                                if (result.success)
+                                {
+                                    await MessageOrderSaved(convo.WaId, result.orderId);
+                                }
+                                else
+                                {
+                                    await _wati.SessionMessageSend(convo.WaId, $"Error saving order: {result.error}");
+                                }
+
+
+                                ////Set Status Pay Meth Confirm
+                                //await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.OrderPayMethodConfirm);
+
+                                ////Send Message Pay Method Confirm
+                                //await MessageFoodOrderPayMethodConfirm(convo.WaId);
+                                break;
+
+                            case REPLY_NO:
+                                //Send Message Confirm Order
+                                await MessageFoodOrderMoreProductsConfirmationRemixReplyNo(convo.WaId, order);
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                break;
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.CancelConfirm:
+                        #region CancelConfirm
+                        switch (messageReply)
+                        {
+                            case REPLY_YES:
+                                //Set Conversation to Cancelled
+                                await ConversationStatusSet(convo.Id, WatiConversationStatusEnum.Cancelled);
+                                convo.CompletedDate = DateTime.Now;
+
+                                //Update Database
+                                order.RejectDate = DateTime.Now;
+                                order.RejectReason = CANCELLED_BY_USER;
+                                _context.SaveChanges();
+
+                                //Send Message Cancel Confirm
+                                await _wati.SessionMessageSend(convo.WaId, "You order has been cancelled. We hope to chat with you again soon. Thank you!");
+                                break;
+
+                            case REPLY_NO:
+                                //Set Status to Category Selection
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                //Send Message Add More Products (Armand Van Helden REMIX)
+                                await MessageFoodOrderMoreProductsConfirmationRemixReplyNo(convo.WaId, order);
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                break;
+
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.OrderPayMethodConfirm:
+                        #region Paymethod Confirm
+                        //switch (messageReply)
+                        //{
+                        //    case REPLY_PAYMENT_CASH:
+                        //        order.PaymentMethodId = (int)PosPaymentTypeEnum.Cash;
+                        //        break;
+
+                        //    case REPLY_PAYMENT_CARD:
+                        //        order.PaymentMethodId = (int)PosPaymentTypeEnum.Card;
+                        //        break;
+
+                        //    case REPLY_PAYMENT_EFT:
+                        //        order.PaymentMethodId = (int)PosPaymentTypeEnum.EFT;
+                        //        break;
+                        //}
+                        //_context.SaveChanges();
+
+
+                        //var saveTotal = await FoodOrderTotalsGet(order.Id);
+                        //var productList = await FoodOrderCartGet(order.Id);
+
+                        //var result = await _pointOfSaleService.OrderSave(order.Id, saveTotal, productList);
+
+                        //if (result.success)
+                        //{
+                        //    await MessageOrderSaved(convo.WaId, result.orderId);
+                        //}
+                        //else
+                        //{
+                        //    await _wati.SessionMessageSend(convo.WaId, $"Error saving order: {result.error}");
+                        //}
+                        #endregion
+                        break;
+
+                    default:
+                        await MessageResponseUnexpected(convo.WaId);
+                        break;
+                }
+            }
+            else
+            {
+                await MessageResponseUnexpected(convo.WaId);
+            }
+        }
         private async Task<List<AppWatiConversation>> ConversationListAcive(string whatsAppNumber)
         {
             return await Task.Run(() => 
@@ -587,698 +1324,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
                 _context.SaveChanges();
             });
-        }
-        private async Task FoodOrderProcess(SessionMessageReceiveDto message, AppWatiConversation convo, string messageReply)
-        {
-            if (convo.WatiOrderid != null)
-            {
-                var order = _context.AppWatiOrders.Single(x => x.Id == (int)convo.WatiOrderid);
-                AppTenantInfo tenant = new AppTenantInfo();
-                AppBrand brand = new AppBrand();
-                AppProductCategory category = new AppProductCategory();
-                AppProduct product = new AppProduct();
-                AppProductExtra extra = new AppProductExtra();
-                List<AppBrand> brandList = new List<AppBrand>();
-                List<AppProductExtra> productExtraList = new List<AppProductExtra>();
-                var tenantId = new Guid();
-                int brandId = 0;
-                int categoryId = 0;
-                int productId = 0;
-                int extraId = 0;
-                int orderDetail = 0;
-                
-                #region Logistics
-                if (order.TenantId != null)
-                {
-                    tenant = _context.AppTenantInfos.Single(x => x.TenantId == order.TenantId);
-                    tenantId = (Guid)order.TenantId;
-
-                    brandList = await _pointOfSaleService.BrandList(tenantId);
-                }
-
-                if (order.CurrentBrand != null)
-                {
-                    brandId = (int)order.CurrentBrand;
-                    brand = await _pointOfSaleService.BrandItemGet(brandId);
-                }
-
-                if(order.CurrentOrderDetail!= null)
-                {
-                    orderDetail = (int)order.CurrentOrderDetail;
-                }
-
-                if (order.CurrentCategory != null)
-                {
-                    categoryId = (int)order.CurrentCategory;
-                    category = await _pointOfSaleService.ProductCategoryItemGet(categoryId);
-                }
-
-                if (order.CurrentProduct != null)
-                {
-                    productId = (int)order.CurrentProduct;
-                    product = await _pointOfSaleService.ProductItemGet(productId);
-                }
-
-                if (order.CurrentProductExtra != null)
-                {
-                    extraId = (int)order.CurrentProductExtra;    
-                    extra = await _pointOfSaleService.ProductExtraItemGet(extraId);
-                }
-                #endregion
-
-                switch (order.WatiOrderStatusId)
-                {
-                    case (int)WatiFoodOrderStatusEnum.VendorSelection:
-                        #region Vendor Selection                        
-                        var tenantSelected = (await _pointOfSaleService.VendorList()).SingleOrDefault(x => x.Name == messageReply);
-                        
-                        if (tenantSelected == null)
-                        {
-                            await MessageResponseUnexpected(convo.WaId);
-                        }
-                        else
-                        {
-                            var locationList = await _pointOfSaleService.LocationList((Guid)tenantSelected.TenantId);
-
-                            if (locationList.Count == 1)
-                                order.LocationId = locationList[0].Id;
-                            else
-                            {
-                                //TODO: Location Selection
-                            }
-
-                            order.TenantId = tenantSelected.TenantId;
-                            _context.SaveChanges();
-
-                            if (order.TenantId != null)
-                            {
-                                //Set Status Vendor Landing
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
-
-                                //Message welcome message
-                                await MessageFoodOrderVendorWelcome(convo.WaId, (Guid)order.TenantId, tenantSelected);
-                            }
-                        }
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.VendorLanding:
-                        #region Vendor Landing                       
-                        switch (messageReply)
-                        {
-                            case REPLY_VENDOR_ORDER_FOOD:
-                                //Brand or Category Selection
-                                await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);
-                                break;
-
-                            case REPLY_CANCEL:
-                                //Set status Vendor Selction
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorSelection);
-
-                                //Send Vendor List
-                                await MessageFoodOrderVendorSelection(convo.WaId);
-                                break;
-
-                            default:
-                                await MessageResponseUnexpected(convo.WaId);
-                                return;
-                        }
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.BrandSelection:
-                        #region Brand Selection
-                        var brandSelected = (await _pointOfSaleService.BrandList(tenantId)).SingleOrDefault(x => x.Name == messageReply);
-
-                        if (brandSelected == null)
-                        {
-                            await MessageResponseUnexpected(convo.WaId);
-                        }
-                        else
-                        {
-                            await ProductCategorySelectionFunction(convo, order, brandSelected, tenantId);
-                        }                        
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.CategorySelection:
-                        #region Category Selection                                              
-                        switch (messageReply)
-                        {
-                            case REPLY_BACK_BRAND:
-                                //Go Back to Brand List
-                                //Set Status to Brand Selection
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.BrandSelection);
-
-                                //Send Brand List
-                                await MessageFoodOrderBrandSelection(convo.WaId, tenantId, tenant);
-                                break;
-
-                            case REPLY_BACK_VENDOR:
-                                //Go back to Vendor Landing
-                                //Set Status Vendor Landing
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
-
-                                //Message welcome message
-                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant);
-
-                                break;
-
-                            default:
-                                var categorySelected = (await _pointOfSaleService.ProductCategoryList(brandId)).SingleOrDefault(x => x.Name == messageReply);
-
-                                if (categorySelected == null)
-                                {
-                                    await MessageResponseUnexpected(convo.WaId);
-                                }
-                                else
-                                {
-                                    await ProductSelectionFunction(convo, order, categorySelected);
-                                }
-                                break;
-                        }
-                        #endregion 
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.CategorySelectionText:
-                        #region Product Selection Text                                                
-                        int categorySelection;
-
-                        try
-                        {
-                            categorySelection = Convert.ToInt32(messageReply);
-                        }
-                        catch
-                        {
-                            await MessageResponseUnexpected(convo.WaId);
-                            return;
-                        }
-                                                
-                        if (categorySelection == 0)
-                        {
-                            if (brandList.Count == 1)
-                            {
-                                //Go back to Vendor Landing
-                                //Set Status Vendor Landing
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
-
-                                //Message welcome message
-                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant);
-                            }
-                            else
-                            {
-                                //Go Back to Brand List
-                                //Set Status to Brand Selection
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.BrandSelection);
-
-                                //Send Brand List
-                                await MessageFoodOrderBrandSelection(convo.WaId, tenantId, tenant);
-
-                            }                            
-                        }
-                        else
-                        {
-                            var categoryFromText = (await _pointOfSaleService.ProductCategoryList(brandId))[categorySelection - 1];
-
-                            await ProductSelectionFunction(convo, order, categoryFromText);                                                        
-                        }
-
-                        #endregion
-
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.ProductSelection:
-                        #region Product Selection
-
-                        if (messageReply == REPLY_BACK_CATEGORY)
-                        {                            
-                            await ProductCategorySelectionFunction(convo, order, brand, tenantId);
-                        }
-                        else
-                        {
-                            var productSelected = (await _pointOfSaleService.ProductList(categoryId)).SingleOrDefault(x => x.Name == messageReply);
-
-                            if (productSelected == null)
-                            {
-                                await MessageResponseUnexpected(convo.WaId);
-                            }
-                            else
-                            {
-                                order.CurrentProduct = product.Id;
-                                _context.SaveChanges();
-
-                                //Set Status to Brand Selection
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductAddToCardConfirm);
-
-                                //Send Product Message
-                                await MessageFoodOrderProductConfirmation(convo.WaId, productSelected);                                
-                            }
-                        }
-                        
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.ProductSelectionText:
-                        #region Product Selection Text
-                        int productSelection;
-
-                        try
-                        {
-                            productSelection = Convert.ToInt32(messageReply);
-                        }
-                        catch
-                        {
-                            await MessageResponseUnexpected(convo.WaId);
-                            return;
-                        }
-
-                        if (productSelection == 0)
-                        {                            
-                            await ProductCategorySelectionFunction(convo, order, brand, tenantId);
-                        }
-                        else
-                        {
-                            var productFromText = (await _pointOfSaleService.ProductList(categoryId))[productSelection - 1];
-
-                            if (productFromText == null)
-                            {
-                                await MessageResponseUnexpected(convo.WaId);
-                                return;
-                            }
-                            
-                            //Set Status to Confirm Add To Cart
-                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductAddToCardConfirm);
-
-                            //Send Product Message
-                            await MessageFoodOrderProductConfirmation(convo.WaId, productFromText);
-
-                            order.CurrentProduct = productFromText.Id;
-                            _context.SaveChanges();
-                        }
-                        
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.ProductAddToCardConfirm:
-                        #region Product Add to Cart Confirm                                                   
-                        switch (messageReply)
-                        {
-                            case REPLY_ADD_TO_CART:                                
-                                //Set Status to Confirm Add To Cart
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductCommentQuestion);
-
-                                //Send CommentConfirmation
-                                await MessageFoodOrderProductCommentQuestion(convo.WaId, product);                                
-                                break;
-
-                            case REPLY_CANCEL:
-                                //Send Product Selection
-                                await ProductSelectionFunction(convo, order, category);
-                                break;
-
-                            default:
-                                await MessageResponseUnexpected(convo.WaId);
-                                break;
-                        }
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.ProductCommentQuestion:
-                        #region Product Add to Cart Confirm                                                   
-                        switch (messageReply)
-                        {
-                            case REPLY_YES:
-                                //Set Status to Confirm Product Comment
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductCommentConfirm);
-
-                                //Send Comment Confirmation
-                                await MessageFoodOrderProductCommentConfirm(convo.WaId);
-                                break;
-
-                            case REPLY_NO:
-                                //Set Status to Confirm Add To Cart
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.QuantityConfirm);
-
-                                //Send Quanity Confirmation
-                                await MessageFoodOrderProductQuantity(convo.WaId, product);
-                                break;
-
-                            default:
-                                await MessageResponseUnexpected(convo.WaId);
-                                break;
-                        }
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.ProductCommentConfirm:
-                        #region Product Product Confirm                                                                           
-                        order.CurrentProductComment = messageReply;
-                        _context.SaveChanges();
-                        
-                        //Set Status to Confirm Product Comment
-                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.QuantityConfirm);
-
-                        //Send Quanity Confirmation
-                        await MessageFoodOrderProductQuantity(convo.WaId, product);
-                        
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.QuantityConfirm:
-                        #region Quantity Confirm
-                        int quantity;
-
-                        try
-                        {
-                            quantity = Convert.ToInt16(messageReply);
-                        }
-                        catch 
-                        {
-                            await MessageResponseUnexpected(convo.WaId);
-                            return;
-                        }
-
-                        var orderFromQuantityConfirm = await FoodOrderDetailCreate(order.Id, product, quantity, order.CurrentProductComment);
-
-                        //Check For Product Extra
-                        productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
-
-                        if (productExtraList.Count == 0)
-                        {
-                            //Set Status 
-                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
-
-                            //Send Message Add More Products
-                            await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, orderFromQuantityConfirm);
-                        }
-                        else
-                        {
-                            //Has extras
-                            extra = productExtraList[0];
-                            order.CurrentExtraCount = productExtraList.Count;
-                            order.CurrentExtraCompleted = 0;
-                            order.CurrentProductExtra = extra.Id;
-                            order.CurentExtraOptionMin = extra.Min;
-                            order.CurrentExtraOptionMax = extra.Max;
-                            order.CurrentExtraOptionSelected = 0;
-                            _context.SaveChanges();
-
-                            //Set Status to Confirm Add To Cart
-                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelection);
-
-                            //Send Message Product Extra
-                            await MessageFoodOrderProductExraNotification(convo.WaId, product, productExtraList);
-
-                            //Send Message First Product Exra                            
-                            await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
-                        }                        
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.ProductExtraSelection:
-                        #region Product Extra Selection
-                        switch (messageReply)
-                        {
-                            case REPLY_EXTRA_NONE:
-                                //This extra completed
-                                order.CurrentExtraCompleted++;
-                                _context.SaveChanges();
-                                
-                                if (order.CurrentExtraCount > order.CurrentExtraCompleted)
-                                {
-                                    //More Extras to be selected                                            
-                                    productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
-                                    extra = productExtraList[(int)order.CurrentExtraCompleted];
-                                    order.CurrentProductExtra = extra.Id;
-                                    order.CurrentExtraOptionSelected = 0;
-                                    _context.SaveChanges();
-
-                                    await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
-                                }
-                                else
-                                {
-                                    // All Extras for product selected
-
-                                    //Set Status 
-                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
-
-                                    //Send Message Add More Products
-                                    await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
-                                }
-
-                                break;
-                            
-                            default:                                
-                                var extraOptionSelected = (await _pointOfSaleService.ProductExtraOptionList(extraId)).SingleOrDefault(x => x.Name == messageReply);
-
-                                if (extraOptionSelected == null)
-                                {
-                                    await MessageResponseUnexpected(convo.WaId);
-                                }
-                                else
-                                {
-                                    //Save Extra Option Selection
-                                    var orderDetailFromExtraConfirm = await FoodOrderDetailOptionCreate(orderDetail, extraOptionSelected);
-
-                                    //Set Total
-                                    order.SubTotal = await FoodOrderTotalsGet(order.Id);
-
-                                    //Add to extra completed Counter
-                                    order.CurrentExtraOptionSelected++;
-                                    _context.SaveChanges();
-
-
-
-                                    //Check if the same options needs to be shown again
-                                    if (order.CurrentExtraOptionSelected < order.CurrentExtraOptionMax)
-                                    {
-                                        //Set Status to Confirm Add To Cart
-                                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelectionMoreConfirm);
-
-                                        //Message Topping Status
-                                        await MessageFoodOrderProductExtraMoreQuestion(convo.WaId, extra, (int)order.CurrentExtraOptionSelected);
-                                    }
-                                    else
-                                    {
-                                        //Max Reached
-
-                                        order.CurrentExtraCompleted++;
-                                        _context.SaveChanges();
-
-                                        if (order.CurrentExtraCount > order.CurrentExtraCompleted)
-                                        {
-                                            //More Extras to be selected                                            
-                                            productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
-                                            extra = productExtraList[(int)order.CurrentExtraCompleted];
-                                            order.CurrentProductExtra = extra.Id;
-                                            order.CurrentExtraOptionSelected = 0;
-                                            _context.SaveChanges();
-
-                                            await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
-                                        }
-                                        else
-                                        {
-                                            // All Extras for product selected
-
-                                            //Set Status 
-                                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
-
-                                            //Send Message Add More Products
-                                            await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
-                                        }
-                                    }
-                                }
-                                break;
-                        }
-                        #endregion 
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.ProductExtraSelectionMoreConfirm:
-                        #region Product Extra Selection
-                        switch (messageReply)
-                        {
-                            case REPLY_YES:
-                                //Set Status to Confirm Add To Cart
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelection);
-
-                                //Send Message Product Extra
-                                await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
-                                break;
-
-                            case REPLY_NO:
-                                order.CurrentExtraCompleted++;
-                                _context.SaveChanges();
-
-                                if (order.CurrentExtraCount > order.CurrentExtraCompleted)
-                                {
-                                    //More Extras to be selected                                            
-                                    productExtraList = await _pointOfSaleService.ProductExtraList(product.Id);
-                                    extra = productExtraList[(int)order.CurrentExtraCompleted];
-                                    order.CurrentProductExtra = extra.Id;
-                                    order.CurrentExtraOptionSelected = 0;
-                                    _context.SaveChanges();
-
-                                    //Set Status to Confirm Add To Cart
-                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductExtraSelection);
-
-                                    //Send Message Product Extra - Next Extra
-                                    await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
-                                }
-                                else
-                                {
-                                    // All Extras for product selected
-
-                                    //Set Status 
-                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
-
-                                    //Send Message Add More Products
-                                    await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
-                                }                                
-                                break;
-
-                            default:
-                                await MessageResponseUnexpected(convo.WaId);
-                                return;                                
-                        }
-                        _context.SaveChanges();
-
-                        
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm:                        
-                        #region Product More Checkout Confirm
-                        switch (messageReply)
-                        {
-                            case REPLY_ADD_MORE_PRODUCTS:
-                                //Brand or Category Selection                                
-                                await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);
-                                break;
-
-                            case REPLY_VIEW_CART:
-                                //Set Status View Cart
-                                //Status alread here
-
-                                //Send Message View Cart
-                                await MessageFoodOrderMoreProductsConfirmationRemixViewCart(convo.WaId, order);
-                                break;
-
-                            case REPLY_CHECKOUT:
-                                //Set Status View Cart
-                                //await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.OrderConfirm);
-
-                                //Send Message View Cart
-                                await MessageFoodOrderMoreProductsConfirmationRemixCheckOut(convo.WaId, order);
-                                break;
-
-                            case REPLY_CANCEL_ORDER:                                                                
-                                //Set Status Cancel Confirm
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CancelConfirm);
-
-                                //Send Message Cancel Confirm
-                                await MessageFoodOrderCancelConfirmation(convo.WaId, order);                                
-                                break;
-
-                            case REPLY_YES:
-                                //Set Status Pay Meth Confirm
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.OrderPayMethodConfirm);
-
-                                //Send Message Pay Method Confirm
-                                await MessageFoodOrderPayMethodConfirm(convo.WaId);
-
-                                break;
-
-                            case REPLY_NO:
-                                //Senn Message Confirm Order
-                                await MessageFoodOrderMoreProductsConfirmationRemixReplyNo(convo.WaId, order);
-                                break;
-
-                            default:
-                                await MessageResponseUnexpected(convo.WaId);
-                                break;
-                        }
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.CancelConfirm:
-                        #region CancelConfirm
-                        switch (messageReply)
-                        {
-                            case REPLY_YES:
-                                //Set Conversation to Cancelled
-                                await ConversationStatusSet(convo.Id, WatiConversationStatusEnum.Cancelled);
-                                convo.CompletedDate= DateTime.Now;
-
-                                //Update Database
-                                order.RejectDate = DateTime.Now;
-                                order.RejectReason = CANCELLED_BY_USER;
-                                _context.SaveChanges();
-
-                                //Send Message Cancel Confirm
-                                await _wati.SessionMessageSend(convo.WaId, "You order has been cancelled. We hope to chat with you again soon. Thank you!");
-                                break;
-
-                            case REPLY_NO:
-                                //Set Status to Category Selection
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
-
-                                //Send Message Add More Products (Armand Van Helden REMIX)
-                                await MessageFoodOrderMoreProductsConfirmationRemixReplyNo(convo.WaId, order);
-                                break;
-
-                            default:
-                                await MessageResponseUnexpected(convo.WaId);
-                                break;
-
-                        }
-                        #endregion
-                        break;
-                    
-                    case (int)WatiFoodOrderStatusEnum.OrderPayMethodConfirm:
-                        #region Paymethod Confirm
-                        switch (messageReply)
-                        {
-                            case REPLY_PAYMENT_CASH:
-                                order.PaymentMethodId = (int)PosPaymentTypeEnum.Cash;
-                                break;
-
-                            case REPLY_PAYMENT_CARD:
-                                order.PaymentMethodId = (int)PosPaymentTypeEnum.Card;
-                                break;
-
-                            case REPLY_PAYMENT_EFT:
-                                order.PaymentMethodId = (int)PosPaymentTypeEnum.EFT; 
-                                break;
-                        }
-                        _context.SaveChanges();
-
-
-                        var saveTotal = await FoodOrderTotalsGet(order.Id);
-                        var productList = await FoodOrderCartGet(order.Id);
-
-                        var result = await _pointOfSaleService.OrderSave(order.Id, saveTotal, productList);
-
-                        if (result.success)
-                        {
-                            await MessageOrderSaved(convo.WaId, result.orderId);
-                        }
-                        else
-                        {
-                            await _wati.SessionMessageSend(convo.WaId, $"Error saving order: {result.error}");   
-                        }
-                        #endregion
-                        break;
-
-                    default:                        
-                        await MessageResponseUnexpected(convo.WaId);
-                        break;
-                }
-            }
-            else
-            {
-                await MessageResponseUnexpected(convo.WaId);
-            }
-        }
+        }        
         #endregion
 
         #region WhatsApp Message Send
@@ -1514,7 +1560,7 @@ namespace Pekkish.PointOfSale.Api.Services
             }
             else
             {
-                message.Body = $"Please select from the following {tenant.LabelBrand.ToLower()}s:";
+                message.Body = $"Please select from the following {tenant.LabelBrandPlural.ToLower()}:";
                 message.ButtonText = $"Choose {tenant.LabelBrand}";
             }
 
@@ -1558,7 +1604,7 @@ namespace Pekkish.PointOfSale.Api.Services
             }
             else
             {
-                message.Body = $"Please select from the following {tenant.LabelCategory.ToLower()}s:";
+                message.Body = $"Please select from the following {tenant.LabelCategoryPlural.ToLower()}:";
                 message.ButtonText = $"Choose {tenant.LabelCategory}";
             }
            
@@ -1606,7 +1652,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
                     sectionList.Add(new InteractiveListMessageSection
                     {
-                        Title = $"{tenant.LabelBrand}",
+                        Title = $"{tenant.LabelBrandPlural}",
                         Rows = rowBackList
                     });
                 }
@@ -1663,7 +1709,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 }
                 else
                 {
-                    message += $"{tenant.LabelBrand}s:";
+                    message += $"{tenant.LabelBrandPlural}:";
                     message += "\r\n";
                     message += $"0 Go back to {tenant.LabelBrand}";
                 }                
@@ -1671,10 +1717,11 @@ namespace Pekkish.PointOfSale.Api.Services
 
             message += "\r\n";
             message += "\r\n";
-            if (tenant.LabelCategory.IsNullOrEmpty())            
+
+            if (tenant.LabelCategoryPlural.IsNullOrEmpty())            
                 message += "Categories:";
             else
-                message += $"{tenant.LabelCategory}:";
+                message += $"{tenant.LabelCategoryPlural}:";
 
             message += "\r\n";
 
@@ -1754,7 +1801,7 @@ namespace Pekkish.PointOfSale.Api.Services
             }
             else
             {
-                message += $"{tenant.LabelCategory}:";
+                message += $"{tenant.LabelCategoryPlural}:";
                 message += "\r\n";
                 message += $"0 Go back to {tenant.LabelCategory} list";
             }
@@ -2032,10 +2079,11 @@ namespace Pekkish.PointOfSale.Api.Services
             var headerText = new InteractiveButtonMessageHeaderText();
             var buttonList = new List<InteractiveButtonMessageButton>();
 
+            var cartList = await FoodOrderCartGet(order.Id);
             var cartTotal = await FoodOrderTotalsGet(order.Id);
 
             #region Buttons
-            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_VIEW_CART });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_CHECKOUT });
             buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_ADD_MORE_PRODUCTS });            
             buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_CANCEL_ORDER });
             #endregion
@@ -2045,11 +2093,31 @@ namespace Pekkish.PointOfSale.Api.Services
 
             messageText.Header = headerText;
 
-            messageText.Body = $"Your product has been added to cart. Your cart value is R{cartTotal.ToString("F2")}.";
+            messageText.Body = $"Your product has been added to cart. Your cart value is R{cartTotal.ToString("F2")}:";
             messageText.Body += "\r\n";
-            messageText.Body += "\r\n";
-            messageText.Body += "What would you lke to do next?";
-            
+            messageText.Body += "\r\n";            
+
+            foreach (var cartProduct in cartList)
+            {
+                messageText.Body += $"{cartProduct.Quantity} X {cartProduct.Name}";
+                messageText.Body += "\r\n";
+
+                var productExtraOptionList = (from Option in _context.AppWatiOrderDetailOptions
+                                              where Option.WatiOrderDetailId == cartProduct.Id
+                                              select Option).ToList();
+
+                foreach (var extraOption in productExtraOptionList)
+                {                    
+                    messageText.Body += $"    {extraOption.Name}";
+                    messageText.Body += "\r\n";
+                }
+
+                messageText.Body += $"    R{cartProduct.Quantity * cartProduct.Amount}";
+                messageText.Body += "\r\n";
+                messageText.Body += "\r\n";
+            }
+
+            messageText.Body += "Would you like to Check Out?";
 
             messageText.Footer = "";
                 
@@ -2063,9 +2131,12 @@ namespace Pekkish.PointOfSale.Api.Services
             var headerText = new InteractiveButtonMessageHeaderText();
             var buttonList = new List<InteractiveButtonMessageButton>();
 
+            var cartList = await FoodOrderCartGet(order.Id);
+            var cartTotal = await FoodOrderTotalsGet(order.Id);
+
             #region Buttons
-            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_ADD_MORE_PRODUCTS });
-            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_VIEW_CART });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_CHECKOUT }); 
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_ADD_MORE_PRODUCTS });            
             buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_CANCEL_ORDER });
             #endregion
 
@@ -2075,9 +2146,30 @@ namespace Pekkish.PointOfSale.Api.Services
 
             messageText.Header = headerText;
 
-            messageText.Body = $"Your cart value is R{order.SubTotal.ToString("F2")}.";
+            messageText.Body = $"Your cart value is R{cartTotal.ToString("F2")}:";
             messageText.Body += "\r\n";
             messageText.Body += "\r\n";
+
+            foreach (var cartProduct in cartList)
+            {
+                messageText.Body += $"{cartProduct.Quantity} X {cartProduct.Name}";
+                messageText.Body += "\r\n";
+
+                var productExtraOptionList = (from Option in _context.AppWatiOrderDetailOptions
+                                              where Option.WatiOrderDetailId == cartProduct.Id
+                                              select Option).ToList();
+
+                foreach (var extraOption in productExtraOptionList)
+                {
+                    messageText.Body += $"    {extraOption.Name}";
+                    messageText.Body += "\r\n";
+                }
+
+                messageText.Body += $"    R{cartProduct.Quantity * cartProduct.Amount}";
+                messageText.Body += "\r\n";
+                messageText.Body += "\r\n";
+            }
+
             messageText.Body += "What would you lke to do next?";
 
 
