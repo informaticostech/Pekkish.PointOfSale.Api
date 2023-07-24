@@ -129,7 +129,7 @@ namespace Pekkish.PointOfSale.Api.Services
                             await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
 
                             //Message welcome message
-                            await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant);
+                            await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant, true);
                         }
 
                         return;
@@ -317,6 +317,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 AppProductExtra extra = new AppProductExtra();
                 List<AppBrand> brandList = new List<AppBrand>();
                 List<AppProductExtra> productExtraList = new List<AppProductExtra>();
+                AppWatiUser watiUser;
                 var tenantId = new Guid();
                 int brandId = 0;
                 int categoryId = 0;
@@ -361,6 +362,15 @@ namespace Pekkish.PointOfSale.Api.Services
                     extraId = (int)order.CurrentProductExtra;
                     extra = await _pointOfSaleService.ProductExtraItemGet(extraId);
                 }
+
+                if (order.WaId != null)
+                {
+                    watiUser = _context.AppWatiUsers.Single(x => x.WaId == message.WaId);
+                }
+                else
+                {
+                    watiUser = new AppWatiUser();
+                }
                 #endregion
 
                 switch (order.WatiOrderStatusId)
@@ -393,7 +403,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
 
                                 //Message welcome message
-                                await MessageFoodOrderVendorWelcome(convo.WaId, (Guid)order.TenantId, tenantSelected);
+                                await MessageFoodOrderVendorWelcome(convo.WaId, (Guid)order.TenantId, tenantSelected, true);
                             }
                         }
                         #endregion
@@ -403,9 +413,37 @@ namespace Pekkish.PointOfSale.Api.Services
                         #region Vendor Landing                       
                         switch (messageReply)
                         {
-                            case REPLY_VENDOR_ORDER_FOOD:
+                            case REPLY_PLACE_ORDER_PICKUP:
                                 //Brand or Category Selection
                                 await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);
+                                break;
+
+                            case REPLY_PLACE_ORDER_DELIVERY:
+                                //Check if users's address is saved?                                
+
+                                if (watiUser.AddressStreet == null || watiUser.AddressSuburb == null || watiUser.AddressPostCode == null)
+                                {
+                                    //Set Food Order Fulfillment to Delivery                                    
+                                    order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Delivery;
+                                    _context.SaveChanges();
+
+
+                                    //Set Status Address Confirm
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressStreetConfirm);
+
+                                    //Message - We require your delivery address in order to continue
+
+                                    //Message Get Address Street
+                                    
+                                }
+                                else
+                                {
+                                    //Set Status Address Correct Confirm
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressCorrectConfirm);
+
+                                    //Message Address Correct Confirm
+
+                                }
                                 break;
 
                             case REPLY_CANCEL:
@@ -422,6 +460,96 @@ namespace Pekkish.PointOfSale.Api.Services
                         }
                         #endregion
                         break;
+
+                    case (int)WatiFoodOrderStatusEnum.AddressStreetConfirm:
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.AddressSuburbConfirm:
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.AddressPostCodeConfirm:
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.AddressCorrectConfirm:
+                        #region Address Correct Confirm
+                        switch (messageReply)
+                        {
+                            case REPLY_YES:
+                                //Check if Vendor Delivers to Post Code
+                                var deliveryCheck = _context.AppOrderDeliveryFees.FirstOrDefault(x => x.TenantId == tenant.TenantId && x.PostCode == watiUser.AddressPostCode);
+
+                                if (deliveryCheck != null)
+                                {
+                                    //Does Deliver
+                                    //Set Status Delveriry Cost OK Confirm
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.DeliveryCostOkConfirm);
+
+                                    //Message Delivery Cost Ok Question
+                                }
+                                else
+                                {
+                                    //Does Not Deliver
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.NoDeliveryPickupConfirm);
+
+                                    //Message Does not deliver, want pickup?
+
+                                }
+
+                                break;
+
+                            case REPLY_NO:
+                                //Set Status Receive Address Street
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressStreetConfirm);
+
+                                //Message Address Street Confirm
+
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                return;
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.DeliveryCostOkConfirm:
+                        #region Delivery Cost OK Confirm
+                        switch (messageReply)
+                        {
+                            case REPLY_YES:
+                                //Save Confirm Delivery, Save Delivery Fee
+
+                                //Set Status
+                                await BrandOrCategorySelectionFunction(convo, order, (Guid)tenant.TenantId, tenant);
+
+                                break;
+
+                            case REPLY_PLACE_ORDER_PICKUP:
+                                //Set Order to Pickup Order
+                                order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Pickup;
+                                _context.SaveChanges();
+
+                                //Set Status Receive Address Street
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressStreetConfirm);
+
+                                //Message Address Street Confirm
+
+                                break;
+
+                            case REPLY_CANCEL:
+
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                return;
+                        }
+
+
+                        #endregion
+                        break;
+
+
 
                     case (int)WatiFoodOrderStatusEnum.BrandSelection:
                         #region Brand Selection
@@ -457,7 +585,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
 
                                 //Message welcome message
-                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant);
+                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant, true);
 
                                 break;
 
@@ -500,7 +628,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.VendorLanding);
 
                                 //Message welcome message
-                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant);
+                                await MessageFoodOrderVendorWelcome(convo.WaId, tenantId, tenant, true);
                             }
                             else
                             {
@@ -1447,7 +1575,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveListMessageSend(whatsappNumber, welcome);
         }
-        private async Task MessageFoodOrderVendorWelcome(string whatsappNumber, Guid tenantId, AppTenantInfo tenant)
+        private async Task MessageFoodOrderVendorWelcome(string whatsappNumber, Guid tenantId, AppTenantInfo tenant, bool isDeliveryOption)
         {
             var messageMedia = new InteractiveButtonsMessageMediaDto();
             var messageText = new InteractiveButtonsMessageTextDto();
@@ -1456,7 +1584,7 @@ namespace Pekkish.PointOfSale.Api.Services
             var media = new InteractiveButtonHeaderMedia();
             var buttonList = new List<InteractiveButtonMessageButton>();
             var locationList = await _pointOfSaleService.LocationList(tenantId);
-            var location = new AppLocation();
+            var location = new AppLocation();            
             
             if (locationList.Count == 1)
             {
@@ -1470,8 +1598,16 @@ namespace Pekkish.PointOfSale.Api.Services
             #region Buttons
             buttonList.Add(new InteractiveButtonMessageButton()
             {
-                Text = REPLY_VENDOR_ORDER_FOOD
+                Text = REPLY_PLACE_ORDER_PICKUP
             });
+
+            if (tenant.IsWhatsAppDelivery && isDeliveryOption)
+            {
+                buttonList.Add(new InteractiveButtonMessageButton()
+                {
+                    Text = REPLY_PLACE_ORDER_DELIVERY
+                });
+            }
 
             buttonList.Add(new InteractiveButtonMessageButton()
             {

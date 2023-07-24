@@ -16,7 +16,13 @@ public partial class PointOfSaleContext : DbContext
     {
     }
 
+    #region Db Sets
+    public virtual DbSet<AppOrderDeliveryFee> AppOrderDeliveryFees { get; set; }
+
+    public virtual DbSet<AppOrderPostCode> AppOrderPostCodes { get; set; }
+
     public virtual DbSet<AppWatiUser> AppWatiUsers { get; set; }
+    
     public virtual DbSet<AppWatiOrderDetailOption> AppWatiOrderDetailOptions { get; set; }
 
     public virtual DbSet<AbpAuditLog> AbpAuditLogs { get; set; }
@@ -310,9 +316,28 @@ public partial class PointOfSaleContext : DbContext
     public virtual DbSet<SaasTenant> SaasTenants { get; set; }
 
     public virtual DbSet<SaasTenantConnectionString> SaasTenantConnectionStrings { get; set; }
-    
+    #endregion
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+
+        modelBuilder.Entity<AppOrderPostCode>(entity =>
+        {
+            entity.Property(e => e.Area).HasMaxLength(50);
+            entity.Property(e => e.Name).HasMaxLength(100);
+            entity.Property(e => e.PostCode).HasMaxLength(4);
+            entity.Property(e => e.Suburb).HasMaxLength(50);
+        });
+
+        modelBuilder.Entity<AppOrderDeliveryFee>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("PK_AppOrderDeliveryFee");
+
+            entity.Property(e => e.DeliveryFee).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.FreeDeliveryMin).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.PostCode).HasMaxLength(4);
+        });
+
         modelBuilder.Entity<AbpAuditLog>(entity =>
         {
             entity.HasIndex(e => new { e.TenantId, e.ExecutionTime }, "IX_AbpAuditLogs_TenantId_ExecutionTime");
