@@ -371,6 +371,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 {
                     watiUser = new AppWatiUser();
                 }
+
                 #endregion
 
                 switch (order.WatiOrderStatusId)
@@ -427,14 +428,16 @@ namespace Pekkish.PointOfSale.Api.Services
                                     order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Delivery;
                                     _context.SaveChanges();
 
-
                                     //Set Status Address Confirm
                                     await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressStreetConfirm);
 
-                                    //Message - We require your delivery address in order to continue
+                                    //Message - We require your delivery address in order to continue                                    
+                                    await _wati.SessionMessageSend(message.WaId, "We currently do not have your address saved.");
+
+                                    await MessageAddressRequired(message.WaId);
 
                                     //Message Get Address Street
-                                    
+                                    await _wati.SessionMessageSend(message.WaId, "Please enter your street address.");
                                 }
                                 else
                                 {
@@ -442,7 +445,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                     await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressCorrectConfirm);
 
                                     //Message Address Correct Confirm
-
+                                    await MessageAddressCorrectConfirmation(message.WaId, watiUser);
                                 }
                                 break;
 
@@ -462,12 +465,58 @@ namespace Pekkish.PointOfSale.Api.Services
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.AddressStreetConfirm:
+                        #region Addresss Street Confirm
+                        //Save Address Street
+                        watiUser.AddressStreet = messageReply;
+                        _context.SaveChanges();
+
+                        //Status set Adddress Suburb Confirm
+                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressSuburbConfirm);
+
+                        //Message Confirm Suburb
+                        //Message Get Address Street
+                        await _wati.SessionMessageSend(message.WaId, "Please enter your suburb.");
+                        #endregion
+
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.AddressSuburbConfirm:
+                        #region Address Suburb Confirm
+                        //Save Address Suburb
+                        watiUser.AddressSuburb = messageReply;
+                        _context.SaveChanges();
+
+                        //Status set Adddress Suburb Confirm
+                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressPostCodeConfirm);
+
+                        //Message Confirm Post Code
+                        //Message Get Address Street
+                        await _wati.SessionMessageSend(message.WaId, "Please enter your post code.");
+                        #endregion
+
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.AddressPostCodeConfirm:
+                        #region Address Post Code Confirm
+                        var postCodeCheck = _context.AppOrderPostCodes.FirstOrDefault(x => x.PostCode == messageReply);
+
+                        if (postCodeCheck != null)
+                        {
+                            //Save Address Post Code
+                            watiUser.AddressPostCode = messageReply;
+                            _context.SaveChanges();
+
+                            //Status set Adddress Correct Confirm
+                            await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressCorrectConfirm);
+
+                            //Message Address Correct Confirm
+                            await MessageAddressCorrectConfirmation(message.WaId, watiUser);
+                        }
+                        else
+                        {
+                            await _wati.SessionMessageSend(message.WaId, "Your post code supplied is invalid. Please enter your postcode again.");
+                        }                        
+                        #endregion
                         break;
 
                     case (int)WatiFoodOrderStatusEnum.AddressCorrectConfirm:
@@ -480,7 +529,10 @@ namespace Pekkish.PointOfSale.Api.Services
 
                                 if (deliveryCheck != null)
                                 {
-                                    //Does Deliver
+                                    //Save delivery Fee
+                                    order.DeliveryFee = deliveryCheck.DeliveryFee;
+                                    _context.SaveChanges();
+
                                     //Set Status Delveriry Cost OK Confirm
                                     await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.DeliveryCostOkConfirm);
 
@@ -502,6 +554,10 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressStreetConfirm);
 
                                 //Message Address Street Confirm
+                                await MessageAddressRequired(message.WaId);
+
+                                //Message Get Address Street
+                                await _wati.SessionMessageSend(message.WaId, "Please enter your street address.");
 
                                 break;
 
@@ -516,12 +572,9 @@ namespace Pekkish.PointOfSale.Api.Services
                         #region Delivery Cost OK Confirm
                         switch (messageReply)
                         {
-                            case REPLY_YES:
-                                //Save Confirm Delivery, Save Delivery Fee
-
+                            case REPLY_YES:                                
                                 //Set Status
                                 await BrandOrCategorySelectionFunction(convo, order, (Guid)tenant.TenantId, tenant);
-
                                 break;
 
                             case REPLY_PLACE_ORDER_PICKUP:
@@ -549,7 +602,35 @@ namespace Pekkish.PointOfSale.Api.Services
                         #endregion
                         break;
 
+                    case (int)WatiFoodOrderStatusEnum.NoDeliveryPickupConfirm:
+                        #region No Delivery Pickup Confirm
+                        switch (messageReply)
+                        {
+                            case REPLY_PLACE_ORDER_PICKUP:
+                                //Brand or Category Selction
+                                await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);                                
+                                break;
 
+                            case REPLY_CANCEL_ORDER:
+                                //Set Conversation to Cancelled
+                                await ConversationStatusSet(convo.Id, WatiConversationStatusEnum.Cancelled);
+                                convo.CompletedDate = DateTime.Now;
+
+                                //Update Database
+                                order.RejectDate = DateTime.Now;
+                                order.RejectReason = CANCELLED_BY_USER;
+                                _context.SaveChanges();
+
+                                //Send Message Cancel Confirm
+                                await _wati.SessionMessageSend(convo.WaId, $"You order with {tenant.Name} has been cancelled. We hope to chat with you again soon. Thank you!");
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                return;
+                        }
+                        #endregion
+                        break;
 
                     case (int)WatiFoodOrderStatusEnum.BrandSelection:
                         #region Brand Selection
@@ -1106,7 +1187,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                 _context.SaveChanges();
 
                                 //Send Message Cancel Confirm
-                                await _wati.SessionMessageSend(convo.WaId, "You order has been cancelled. We hope to chat with you again soon. Thank you!");
+                                await _wati.SessionMessageSend(convo.WaId, $"You order with {tenant.Name} has been cancelled. We hope to chat with you again soon. Thank you!");
                                 break;
 
                             case REPLY_NO:
@@ -1679,6 +1760,57 @@ namespace Pekkish.PointOfSale.Api.Services
 
                 var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
             }
+        }        
+        private async Task MessageAddressRequired(string whatsappNumber)
+        {            
+            string message = "\r\n";
+            message += "\r\n";
+            message += $"We will now be prompting you for your address details:";
+            message += "\r\n";
+            message += "\r\n";
+            message += $"Firstly, your street address.";
+            message += "\r\n";
+            message += $"Secondly, your suburb.";
+            message += "\r\n";
+            message += $"Finally, your post code.";
+            message += "\r\n";
+            message += "\r\n";
+
+            await _wati.SessionMessageSend(whatsappNumber, message);
+        }
+        private async Task MessageAddressCorrectConfirmation(string whatsappNumber, AppWatiUser user)
+        {
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+            
+            #region Buttons
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_YES });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_NO });            
+            #endregion
+
+            headerText.Type = "Text";
+            headerText.Text = $"{user.Name}";
+
+            messageText.Header = headerText;
+
+            messageText.Body = $"We currently have your address saved as the following:";
+            messageText.Body += "\r\n";
+            messageText.Body += "\r\n";
+            messageText.Body += $"{user.AddressStreet}";
+            messageText.Body += "\r\n";
+            messageText.Body += $"{user.AddressSuburb}";
+            messageText.Body += "\r\n";
+            messageText.Body += $"{user.AddressPostCode}";
+            messageText.Body += "\r\n";
+            messageText.Body += "\r\n";
+            messageText.Body += "Is the above address correct?";
+
+            messageText.Footer = "";
+
+            messageText.Buttons = buttonList;
+
+            var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
         }
         private async Task MessageFoodOrderBrandSelection(string whatsappNumber, Guid tenantId, AppTenantInfo tenant)
         {
