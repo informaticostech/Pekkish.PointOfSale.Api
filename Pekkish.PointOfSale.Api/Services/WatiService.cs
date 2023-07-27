@@ -424,12 +424,12 @@ namespace Pekkish.PointOfSale.Api.Services
                             case REPLY_PLACE_ORDER_DELIVERY:
                                 //Check if users's address is saved?                                
 
-                                if (watiUser.AddressStreet.IsNullOrEmpty() || watiUser.AddressSuburb.IsNullOrEmpty() || watiUser.AddressPostCode.IsNullOrEmpty())
-                                {
-                                    //Set Food Order Fulfillment to Delivery                                    
-                                    order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Delivery;
-                                    _context.SaveChanges();
+                                //Set Food Order Fulfillment to Delivery                                    
+                                order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Delivery;
+                                _context.SaveChanges();
 
+                                if (watiUser.AddressStreet.IsNullOrEmpty() || watiUser.AddressSuburb.IsNullOrEmpty() || watiUser.AddressPostCode.IsNullOrEmpty())
+                                {                                    
                                     //Set Status Address Confirm
                                     await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressStreetConfirm);
 
@@ -2452,6 +2452,17 @@ namespace Pekkish.PointOfSale.Api.Services
                 messageText.Body += "\r\n";
             }
 
+            if (order.OrderFulfillmentId == (int)PosFulfillmentTypeEnum.Delivery)
+            {
+                messageText.Body += $"Delivery Fee: R{order.DeliveryFee}";
+                messageText.Body += "\r\n";
+                messageText.Body += "\r\n";
+
+                messageText.Body += $"Order Total: R{cartTotal + ((order.DeliveryFee == null) ? 0 : (decimal)order.DeliveryFee)}";
+            }
+
+            messageText.Body += "\r\n";
+            messageText.Body += "\r\n";
             messageText.Body += "Would you like to Check Out?";
 
             messageText.Footer = "";

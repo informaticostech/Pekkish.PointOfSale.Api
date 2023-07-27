@@ -242,6 +242,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 var orderDetail = new AppOrderDetail();
                 var orderDetailOption = new AppOrderDetailOption();
                 var paymentMethod = _context.AppPaymentMethods.Single(x => x.Id == watiOrder.PaymentMethodId).Name;
+                var watiUser = _context.AppWatiUsers.Single(x => x.WaId == watiOrder.WaId);
 
                 #region POS Order
                 var order = new AppOrder();
@@ -251,12 +252,24 @@ namespace Pekkish.PointOfSale.Api.Services
                 order.OrderStatusId = (int)PosOrderStatusEnum.Pending;
                 order.SalesChannelId = (int)PosSalesChannelEnum.WhatsAppPekkish;
                 order.PaymentMethodId = (int)PosPaymentTypeEnum.PayLater;
-                order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Pickup;      
+                order.OrderFulfillmentId = (watiOrder.OrderFulfillmentId == null ) ? (int)PosFulfillmentTypeEnum.Pickup : (int)watiOrder.OrderFulfillmentId;      
                 order.EffectiveDate = DateTime.Now;
                 order.SubTotal = total;
-                order.Total = total;
-                order.DeliveryFee = 0;
-                order.DriverTip = 0;    
+
+                if (watiOrder.OrderFulfillmentId == (int)PosFulfillmentTypeEnum.Delivery)
+                {
+                    order.AddressStreet = watiUser.AddressStreet;
+                    order.AddressSuburb = watiUser.AddressSuburb;
+                    order.PostCode = watiUser.AddressPostCode;
+                    order.DeliveryFee = watiOrder.DeliveryFee;
+                    order.Total = order.SubTotal + ((order.DeliveryFee == null) ? 0 : (decimal)order.DeliveryFee);
+                }
+                else
+                {
+                    order.Total = total;
+                }
+
+                order.DriverTip = 0;
                 order.TaxRatePerc = 0;
                 order.PaidCash = 0;     
                 order.PaidCard = 0;     

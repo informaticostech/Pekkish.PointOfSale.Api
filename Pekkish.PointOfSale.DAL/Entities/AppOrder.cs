@@ -43,6 +43,14 @@ public partial class AppOrder
 
     public decimal? Tax { get; set; }
 
+    public string? AddressStreet { get; set; }
+
+    public string? AddressSuburb { get; set; }
+
+    public string? PostCode { get; set; }
+
+    public string? DeliveryTrackingUrl { get; set; }
+    
     public decimal? DeliveryFee { get; set; }
 
     public decimal? DriverTip { get; set; }
