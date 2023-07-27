@@ -30,6 +30,8 @@ namespace Pekkish.PointOfSale.Api.Services
         private readonly WatiConfig _watiConfig;
         private readonly PointOfSaleContext _context;
         private readonly IPointOfSaleService _pointOfSaleService;
+        private readonly object whatsappNumber;
+
         public WatiService(PointOfSaleContext context, IPointOfSaleService pointOfSaleService, IOptions<WatiConfig> watiConfig)
         {            
             _watiConfig = watiConfig.Value;
@@ -422,7 +424,7 @@ namespace Pekkish.PointOfSale.Api.Services
                             case REPLY_PLACE_ORDER_DELIVERY:
                                 //Check if users's address is saved?                                
 
-                                if (watiUser.AddressStreet == null || watiUser.AddressSuburb == null || watiUser.AddressPostCode == null)
+                                if (watiUser.AddressStreet.IsNullOrEmpty() || watiUser.AddressSuburb.IsNullOrEmpty() || watiUser.AddressPostCode.IsNullOrEmpty())
                                 {
                                     //Set Food Order Fulfillment to Delivery                                    
                                     order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Delivery;
@@ -537,14 +539,15 @@ namespace Pekkish.PointOfSale.Api.Services
                                     await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.DeliveryCostOkConfirm);
 
                                     //Message Delivery Cost Ok Question
+                                    await MessageDeliveryCostConfirmation(message.WaId, watiUser, tenant, (order.DeliveryFee == null) ? 0 : (decimal)order.DeliveryFee);
                                 }
                                 else
                                 {
                                     //Does Not Deliver
                                     await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.NoDeliveryPickupConfirm);
 
-                                    //Message Does not deliver, want pickup?
-
+                                    //Message No Delivery Pickup Confirm
+                                    MessageNoDeliveryPickupConfirmation(message.WaId, watiUser, tenant);
                                 }
 
                                 break;
@@ -582,15 +585,23 @@ namespace Pekkish.PointOfSale.Api.Services
                                 order.OrderFulfillmentId = (int)PosFulfillmentTypeEnum.Pickup;
                                 _context.SaveChanges();
 
-                                //Set Status Receive Address Street
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.AddressStreetConfirm);
-
-                                //Message Address Street Confirm
+                                //Pickup Order
+                                await BrandOrCategorySelectionFunction(convo, order, (Guid)tenant.TenantId, tenant);
 
                                 break;
 
-                            case REPLY_CANCEL:
+                            case REPLY_CANCEL_ORDER:
+                                //Set Conversation to Cancelled
+                                await ConversationStatusSet(convo.Id, WatiConversationStatusEnum.Cancelled);
+                                convo.CompletedDate = DateTime.Now;
 
+                                //Update Database
+                                order.RejectDate = DateTime.Now;
+                                order.RejectReason = CANCELLED_BY_USER;
+                                _context.SaveChanges();
+
+                                //Send Message Cancel Confirm
+                                await _wati.SessionMessageSend(convo.WaId, $"You order with {tenant.Name} has been cancelled. We hope to chat with you again soon. Thank you!");
                                 break;
 
                             default:
@@ -643,6 +654,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         else
                         {
                             await ProductCategorySelectionFunction(convo, order, brandSelected, tenantId);
+
                         }
                         #endregion
                         break;
@@ -1251,6 +1263,8 @@ namespace Pekkish.PointOfSale.Api.Services
                 await MessageResponseUnexpected(convo.WaId);
             }
         }
+
+        
         private async Task<List<AppWatiConversation>> ConversationListAcive(string whatsAppNumber)
         {
             return await Task.Run(() => 
@@ -1806,6 +1820,59 @@ namespace Pekkish.PointOfSale.Api.Services
             messageText.Body += "\r\n";
             messageText.Body += "Is the above address correct?";
 
+            messageText.Footer = "";
+
+            messageText.Buttons = buttonList;
+
+            var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+        }
+        private async Task MessageDeliveryCostConfirmation(string whatsappNumber, AppWatiUser user, AppTenantInfo tenant, decimal DeliveryFee)
+
+        {
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+
+            #region Buttons
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_YES });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_PLACE_ORDER_PICKUP});
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_CANCEL_ORDER });
+            #endregion
+
+            headerText.Type = "Text";
+            headerText.Text = $"Delivery to {user.AddressPostCode}";
+
+            messageText.Header = headerText;
+            messageText.Body = $"The Delivery cost is *R{DeliveryFee}*";
+            messageText.Body += "\r\n";
+            messageText.Body += "\r\n";
+            messageText.Body += $"Would you like to continue?";
+            messageText.Footer = "";
+
+            messageText.Buttons = buttonList;
+
+            var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+        }
+        private async Task MessageNoDeliveryPickupConfirmation(string whatsappNumber, AppWatiUser user, AppTenantInfo tenant)
+
+        {
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+
+            #region Buttons            
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_PLACE_ORDER_PICKUP });
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_CANCEL_ORDER });
+            #endregion
+
+            headerText.Type = "Text";
+            headerText.Text = $"Delivery unavailable for {user.AddressPostCode}";
+
+            messageText.Header = headerText;
+            messageText.Body = $"{tenant.Name} does not deliver to your post code.";
+            messageText.Body += "\r\n";
+            messageText.Body += "\r\n";
+            messageText.Body += $"Would you like to place a pickup order instead?";
             messageText.Footer = "";
 
             messageText.Buttons = buttonList;
