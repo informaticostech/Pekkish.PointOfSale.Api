@@ -2447,9 +2447,7 @@ namespace Pekkish.PointOfSale.Api.Services
                     messageText.Body += "\r\n";
                 }
 
-                messageText.Body += $"    R{cartProduct.Quantity * cartProduct.Amount}";
-                messageText.Body += "\r\n";
-                messageText.Body += "\r\n";
+                messageText.Body += $"    R{cartProduct.Quantity * cartProduct.Amount}";                
             }
 
             if (order.OrderFulfillmentId == (int)PosFulfillmentTypeEnum.Delivery)

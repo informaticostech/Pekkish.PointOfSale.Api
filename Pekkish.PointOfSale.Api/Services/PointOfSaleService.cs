@@ -266,6 +266,7 @@ namespace Pekkish.PointOfSale.Api.Services
                 }
                 else
                 {
+                    order.DeliveryFee = 0;
                     order.Total = total;
                 }
 
