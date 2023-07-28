@@ -2447,7 +2447,9 @@ namespace Pekkish.PointOfSale.Api.Services
                     messageText.Body += "\r\n";
                 }
 
-                messageText.Body += $"    R{cartProduct.Quantity * cartProduct.Amount}";                
+                messageText.Body += $"    R{cartProduct.Quantity * cartProduct.Amount}";
+                messageText.Body += "\r\n";
+                messageText.Body += "\r\n";
             }
 
             if (order.OrderFulfillmentId == (int)PosFulfillmentTypeEnum.Delivery)
@@ -2457,10 +2459,11 @@ namespace Pekkish.PointOfSale.Api.Services
                 messageText.Body += "\r\n";
 
                 messageText.Body += $"Order Total: R{cartTotal + ((order.DeliveryFee == null) ? 0 : (decimal)order.DeliveryFee)}";
+                messageText.Body += "\r\n";
+                messageText.Body += "\r\n";
             }
 
-            messageText.Body += "\r\n";
-            messageText.Body += "\r\n";
+            
             messageText.Body += "Would you like to Check Out?";
 
             messageText.Footer = "";
