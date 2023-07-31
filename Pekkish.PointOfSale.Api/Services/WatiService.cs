@@ -841,43 +841,6 @@ namespace Pekkish.PointOfSale.Api.Services
                         #endregion
                         break;
 
-                    case (int)WatiFoodOrderStatusEnum.ProductCommentQuestion:
-                        #region Product Add to Cart Confirm                                                   
-                        switch (messageReply)
-                        {
-                            case REPLY_YES:
-                                //Set Status to Confirm Product Comment
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductCommentConfirm);
-
-                                //Send Comment Confirmation
-                                await MessageFoodOrderProductCommentConfirm(convo.WaId);
-                                break;
-
-                            case REPLY_NO:
-                                
-                                break;
-
-                            default:
-                                await MessageResponseUnexpected(convo.WaId);
-                                break;
-                        }
-                        #endregion
-                        break;
-
-                    case (int)WatiFoodOrderStatusEnum.ProductCommentConfirm:
-                        #region Product Product Confirm                                                                           
-                        order.CurrentProductComment = messageReply;
-                        _context.SaveChanges();
-
-                        //Set Status to Confirm Product Comment
-                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.QuantityConfirm);
-
-                        //Send Quanity Confirmation
-                        await MessageFoodOrderProductQuantity(convo.WaId, product);
-
-                        #endregion
-                        break;
-
                     case (int)WatiFoodOrderStatusEnum.QuantityConfirm:
                         #region Quantity Confirm
                         int quantity;
@@ -937,6 +900,47 @@ namespace Pekkish.PointOfSale.Api.Services
                             //Send Message First Product Exra                            
                             await MessageFoodOrderProductExtraSelection(convo.WaId, product, extra, (int)order.CurrentExtraOptionSelected);
                         }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductCommentQuestion:
+                        #region Product Add to Cart Confirm                                                   
+                        switch (messageReply)
+                        {
+                            case REPLY_YES:
+                                //Set Status to Confirm Product Comment
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductCommentConfirm);
+
+                                //Send Comment Confirmation
+                                await MessageFoodOrderProductCommentConfirm(convo.WaId);
+                                break;
+
+                            case REPLY_NO:
+                                //Set Status 
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                //Send Message Add More Products
+                                await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                break;
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.ProductCommentConfirm:
+                        #region Product Product Confirm                                                                           
+                        order.CurrentProductComment = messageReply;
+                        _context.SaveChanges();
+
+                        //Set Status 
+                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                        //Send Message Add More Products
+                        await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+
                         #endregion
                         break;
 
@@ -1122,20 +1126,20 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);
                                 break;
 
-                            case REPLY_VIEW_CART:
-                                //Set Status View Cart
-                                //Status alread here
+                            //case REPLY_VIEW_CART:
+                            //    //Set Status View Cart
+                            //    //Status alread here
 
-                                //Send Message View Cart
-                                await MessageFoodOrderMoreProductsConfirmationRemixViewCart(convo.WaId, order);
-                                break;
+                            //    //Send Message View Cart
+                            //    await MessageFoodOrderMoreProductsConfirmationRemixViewCart(convo.WaId, order);
+                            //    break;
 
                             case REPLY_CHECKOUT:
                                 //Set Status View Cart
                                 //await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.OrderConfirm);
 
                                 //Send Message View Cart
-                                await MessageFoodOrderMoreProductsConfirmationRemixCheckOut(convo.WaId, order);
+                                await MessageFoodOrderCheckOutConfirm(convo.WaId, order);
                                 break;
 
                             case REPLY_CANCEL_ORDER:
@@ -2269,7 +2273,7 @@ namespace Pekkish.PointOfSale.Api.Services
         }
         private async Task MessageFoodOrderProductCommentConfirm(string whatsappNumber)
         {            
-            var result = await _wati.SessionMessageSend(whatsappNumber, "Please sumbit your special instruction:");            
+            var result = await _wati.SessionMessageSend(whatsappNumber, "Please submit your special instruction:");            
         }
         private async Task MessageFoodOrderProductExraNotification(string whatsappNumber, AppProduct product, List<AppProductExtra> productExtraList)
         {
@@ -2392,9 +2396,9 @@ namespace Pekkish.PointOfSale.Api.Services
             rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "4", Description = "" });
             rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "5", Description = "" });
             rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "6", Description = "" });
-            //rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "7", Description = "" });
-            //rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "8", Description = "" });
-            //rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "9", Description = "" });
+            rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "7", Description = "" });
+            rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "8", Description = "" });
+            rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "9", Description = "" });
             //rowQuantityList.Add(new InteractivelistMessageSectionRow { Title = "10", Description = "" });
 
             //Complile Lists
@@ -2582,7 +2586,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
         }
-        private async Task MessageFoodOrderMoreProductsConfirmationRemixCheckOut(string whatsappNumber, AppWatiOrder order)
+        private async Task MessageFoodOrderCheckOutConfirm(string whatsappNumber, AppWatiOrder order)
         {
             var messageText = new InteractiveButtonsMessageTextDto();
             var headerText = new InteractiveButtonMessageHeaderText();
@@ -2602,7 +2606,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
             messageText.Body = "";
 
-            messageText.Body += "Are you sure you would lke to check out?";
+            messageText.Body += "Are you sure you would like to check out?";
 
             messageText.Footer = "";
 
