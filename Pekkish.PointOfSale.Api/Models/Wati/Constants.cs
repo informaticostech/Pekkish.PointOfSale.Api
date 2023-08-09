@@ -34,6 +34,10 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public const string REPLY_HELP = "help";
         public const string REPLY_RESTART = "restart";
         public const string REPLY_EXTRA_NONE = "None / Nothing";
+        public const string REPLY_ASAP = "ASAP";
+        public const string REPLY_LATER_TODAY = "Later Today";
+        public const string REPLY_BACK_TO_CART = "Back to Cart";
+        public const string REPLY_INCORRECT_TIME_SUPPLIED = "Incorrect time supplied";       
         //public const string REPLY_EXTRA_NONE_MORE = "None / Nothing More";
 
         public enum WatiConversationStatusEnum { Initialised = 1, InProgress, Completed, Expired, Cancelled }
@@ -41,7 +45,8 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public enum WatiFoodOrderStatusEnum { VendorSelection = 1, CategorySelection, ProductSelection, ProductAddToCardConfirm, ProductExtraSelection, 
             ProductMoreCheckoutConfirm, VendorLanding, OrderDateConfirm, OrderFulfillmentConfirm, OrderPayMethodConfirm, OrderSeastingAreaConfirm, BrandSelection, 
             CategorySelectionText, ProductSelectionText, QuantityConfirm, CancelConfirm, Cancelled, Completed, ProductExtraSelectionMoreConfirm, ProductCommentQuestion, 
-            ProductCommentConfirm, AddressStreetConfirm, AddressSuburbConfirm, AddressPostCodeConfirm, AddressCorrectConfirm, DeliveryCostOkConfirm, NoDeliveryPickupConfirm }
+            ProductCommentConfirm, AddressStreetConfirm, AddressSuburbConfirm, AddressPostCodeConfirm, AddressCorrectConfirm, DeliveryCostOkConfirm, NoDeliveryPickupConfirm,
+            RecieveTimeConfirm, RecieveTimeLaterConfirm}
 
         public enum PosOrderStatusEnum
         {

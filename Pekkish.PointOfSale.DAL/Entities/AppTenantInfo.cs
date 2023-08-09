@@ -30,7 +30,9 @@ public partial class AppTenantInfo
     public bool IsWhatsAppDelivery { get; set; }
 
     public bool IsWhatsAppSpecialInstruction { get; set; }    
-    
+
+    public bool IsWhatsAppPreorder { get; set; }
+
     public string? LabelBrand { get; set; }
 
     public string? LabelBrandPlural { get; set; }

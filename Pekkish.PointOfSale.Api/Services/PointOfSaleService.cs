@@ -252,8 +252,13 @@ namespace Pekkish.PointOfSale.Api.Services
                 order.OrderStatusId = (int)PosOrderStatusEnum.Pending;
                 order.SalesChannelId = (int)PosSalesChannelEnum.WhatsAppPekkish;
                 order.PaymentMethodId = (int)PosPaymentTypeEnum.PayLater;
-                order.OrderFulfillmentId = (watiOrder.OrderFulfillmentId == null ) ? (int)PosFulfillmentTypeEnum.Pickup : (int)watiOrder.OrderFulfillmentId;      
-                order.EffectiveDate = DateTime.Now;
+                order.OrderFulfillmentId = (watiOrder.OrderFulfillmentId == null ) ? (int)PosFulfillmentTypeEnum.Pickup : (int)watiOrder.OrderFulfillmentId;
+
+                if (watiOrder.EffectiveDate == null)
+                    order.EffectiveDate = DateTime.Now;
+                else
+                    order.EffectiveDate = (DateTime)watiOrder.EffectiveDate;
+
                 order.SubTotal = total;
 
                 if (watiOrder.OrderFulfillmentId == (int)PosFulfillmentTypeEnum.Delivery)

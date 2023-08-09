@@ -1124,23 +1124,31 @@ namespace Pekkish.PointOfSale.Api.Services
                             case REPLY_ADD_MORE_PRODUCTS:
                                 //Brand or Category Selection                                
                                 await BrandOrCategorySelectionFunction(convo, order, tenantId, tenant);
-                                break;
-
-                            //case REPLY_VIEW_CART:
-                            //    //Set Status View Cart
-                            //    //Status alread here
-
-                            //    //Send Message View Cart
-                            //    await MessageFoodOrderMoreProductsConfirmationRemixViewCart(convo.WaId, order);
-                            //    break;
+                                break;                            
 
                             case REPLY_CHECKOUT:
-                                //Set Status View Cart
-                                //await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.OrderConfirm);
+                                //Check if can order later
+                                var isTooLate = false;
 
-                                //Send Message View Cart
-                                await MessageFoodOrderCheckOutConfirm(convo.WaId, order);
-                                break;
+                                if (DateTime.Now > DateTime.Now.AddHours(19))
+                                {
+                                    isTooLate = true;
+                                }
+
+                                if (tenant.IsWhatsAppPreorder && !isTooLate)
+                                {
+                                    //Set Status Receive Time Confirm
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.RecieveTimeConfirm);
+
+                                    //Message Revceive Time Confirm
+                                    await MessageRecieveTimeConfirmation(convo.WaId);
+                                    break;
+                                }
+                                else
+                                {
+                                    await MessageFoodOrderCheckOutConfirm(convo.WaId, order);
+                                    break;
+                                }                                
 
                             case REPLY_CANCEL_ORDER:
                                 //Set Status Cancel Confirm
@@ -1150,7 +1158,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await MessageFoodOrderCancelConfirmation(convo.WaId, order);
                                 break;
 
-                            case REPLY_YES:                                
+                            case REPLY_YES:
                                 order.PaymentMethodId = (int)PosPaymentTypeEnum.PayLater;
                                 _context.SaveChanges();
 
@@ -1167,13 +1175,6 @@ namespace Pekkish.PointOfSale.Api.Services
                                 {
                                     await _wati.SessionMessageSend(convo.WaId, $"Error saving order: {result.error}");
                                 }
-
-
-                                ////Set Status Pay Meth Confirm
-                                //await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.OrderPayMethodConfirm);
-
-                                ////Send Message Pay Method Confirm
-                                //await MessageFoodOrderPayMethodConfirm(convo.WaId);
                                 break;
 
                             case REPLY_NO:
@@ -1185,6 +1186,113 @@ namespace Pekkish.PointOfSale.Api.Services
                                 await MessageResponseUnexpected(convo.WaId);
                                 break;
                         }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.RecieveTimeConfirm:
+                        #region Correct Time Confirm
+                        switch (messageReply)
+                        {
+                            case REPLY_ASAP:
+                                //Set Status - Checkout Holding Status
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                //Send Message Checkout Confirm
+                                await MessageFoodOrderCheckOutConfirm(convo.WaId, order);
+                                break;
+
+                            case REPLY_LATER_TODAY:
+                                //Set status to Later today confirm
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.RecieveTimeLaterConfirm);
+
+                                //Send Message Confirm Order
+                                await MessageRecieveTimeLaterConfirmation(convo.WaId);
+                                break;
+
+                            case REPLY_BACK_TO_CART:
+                                //Set status to Product More Checkout Confirm
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                                //Send Message Product More Checkout Confirm
+                                await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
+                                break;
+
+                            default:
+                                await MessageResponseUnexpected(convo.WaId);
+                                break;
+                        }
+                        #endregion
+                        break;
+
+                    case (int)WatiFoodOrderStatusEnum.RecieveTimeLaterConfirm:
+                        #region Recieve Time Later Confirm
+
+                        var orderTime =  messageReply;
+                        string hour;
+                        string minute;
+                        int hourInt = 0;
+                        int minuteInt = 0;
+                                               
+                        try
+                        {
+                            #region Validate Hour portion of time supplied
+                            hour = orderTime.Substring(0, 2); // hour part of orderTime
+                            hourInt = Convert.ToInt32(hour);
+                   
+                            if (hourInt < 12)
+                            {
+                                await _wati.SessionMessageSend(convo.WaId, REPLY_INCORRECT_TIME_SUPPLIED);
+                                await MessageRecieveTimeLaterConfirmation(convo.WaId);
+                                break;
+                            }
+                            if (hourInt > 20)
+                            {
+                                await _wati.SessionMessageSend(convo.WaId, REPLY_INCORRECT_TIME_SUPPLIED);
+                                await MessageRecieveTimeLaterConfirmation(convo.WaId);
+                                break;
+                            }
+                            if (hourInt < DateTime.Now.Hour)
+                            {
+                                await _wati.SessionMessageSend(convo.WaId, REPLY_INCORRECT_TIME_SUPPLIED);
+                                await MessageRecieveTimeLaterConfirmation(convo.WaId);
+                                break;
+                            }
+                            #endregion
+
+                            #region Validate Hour portion of time supplied                       
+                            minute = orderTime.Substring(3, 2); ; // minute portion of oderTime
+                            minuteInt = Convert.ToInt32(minute);
+
+                            if (minuteInt < 0)
+                            {
+                                await _wati.SessionMessageSend(convo.WaId, REPLY_INCORRECT_TIME_SUPPLIED);
+                                await MessageRecieveTimeLaterConfirmation(convo.WaId);
+                                break;
+                            }
+                            if (minuteInt > 59)
+                            {
+                                await _wati.SessionMessageSend(convo.WaId, REPLY_INCORRECT_TIME_SUPPLIED);
+                                await MessageRecieveTimeLaterConfirmation(convo.WaId);
+                                break;
+                            }
+                            #endregion
+                        }
+                        catch
+                        {
+                            await _wati.SessionMessageSend(convo.WaId, REPLY_INCORRECT_TIME_SUPPLIED);
+                            await MessageRecieveTimeLaterConfirmation(convo.WaId);
+                            break;
+                        }
+
+                        //Once Confirmed:
+                        order.EffectiveDate = DateTime.Today.AddHours(hourInt).AddMinutes(minuteInt);
+                        _context.SaveChanges();
+
+                        //Set Status Checkout Holding
+                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+
+                        //Send Message Checkout Confirm (Later)
+                        await MessageFoodOrderCheckOutConfirm(convo.WaId, order);                        
                         #endregion
                         break;
 
@@ -2476,6 +2584,51 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
         }
+        private async Task MessageRecieveTimeConfirmation(string whatsappNumber)
+        {
+            var messageText = new InteractiveButtonsMessageTextDto();
+            var headerText = new InteractiveButtonMessageHeaderText();
+            var buttonList = new List<InteractiveButtonMessageButton>();
+
+            #region Buttons
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_ASAP });
+            
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_LATER_TODAY });
+
+            buttonList.Add(new InteractiveButtonMessageButton() { Text = REPLY_BACK_TO_CART });
+            #endregion
+
+            headerText.Type = "Text";
+            headerText.Text = $"Confirm Order Time";
+
+
+            messageText.Header = headerText;
+
+            messageText.Body = $"For when would you like to place your order?";
+            messageText.Body += "\r\n";
+            messageText.Body += "\r\n";
+            messageText.Footer = "";
+
+            messageText.Buttons = buttonList;
+
+            var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
+        }        
+        private async Task MessageRecieveTimeLaterConfirmation(string whatsappNumber)
+        {
+            string message = "\r\n";
+           
+            message = $"Please enter your order time using the 24-hour format: HH:MM";
+            message += "\r\n";
+            message += "\r\n";
+            message += $"Example, for 5:30PM enter the following:";
+            message += "\r\n";
+            message += $"17:30";
+            message += "\r\n";
+            message += "\r\n";
+            message += $"Choose a time up until 20:00";
+                
+            await _wati.SessionMessageSend(whatsappNumber, message);
+        }
         private async Task MessageFoodOrderMoreProductsConfirmationRemixReplyNo(string whatsappNumber, AppWatiOrder order)
         {
             var messageText = new InteractiveButtonsMessageTextDto();
@@ -2601,19 +2754,27 @@ namespace Pekkish.PointOfSale.Api.Services
 
             headerText.Type = "Text";
             headerText.Text = $"Check Out";
-
             messageText.Header = headerText;
 
             messageText.Body = "";
 
-            messageText.Body += "Are you sure you would like to check out?";
+            if (order.EffectiveDate != null)
+            {
+                messageText.Body = "Order time:";
+                messageText.Body += "\r\n";
+                messageText.Body += $"{Convert.ToDateTime(order.EffectiveDate).TimeOfDay.ToString(@"hh\:mm")}";
+                messageText.Body += "\r\n";
+                messageText.Body += "\r\n";
+            }
 
+            messageText.Body += "Are you sure you would like to check out?";
+            
             messageText.Footer = "";
 
             messageText.Buttons = buttonList;
 
             var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
-        }
+        }        
         private async Task MessageFoodOrderCancelConfirmation(string whatsappNumber, AppWatiOrder order)
         {
             var messageText = new InteractiveButtonsMessageTextDto();
