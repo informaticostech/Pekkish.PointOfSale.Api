@@ -43,7 +43,7 @@ namespace Pekkish.PointOfSale.Api.Models.Wati
         public enum WatiConversationStatusEnum { Initialised = 1, InProgress, Completed, Expired, Cancelled }
         public enum WatiConversationTypeEnum { FoodOrder = 1, ChatToHuman, BecomeVendor }
         public enum WatiFoodOrderStatusEnum { VendorSelection = 1, CategorySelection, ProductSelection, ProductAddToCardConfirm, ProductExtraSelection, 
-            ProductMoreCheckoutConfirm, VendorLanding, OrderDateConfirm, OrderFulfillmentConfirm, OrderPayMethodConfirm, OrderSeastingAreaConfirm, BrandSelection, 
+            CheckoutHoldingStatus, VendorLanding, OrderDateConfirm, OrderFulfillmentConfirm, OrderPayMethodConfirm, OrderSeastingAreaConfirm, BrandSelection, 
             CategorySelectionText, ProductSelectionText, QuantityConfirm, CancelConfirm, Cancelled, Completed, ProductExtraSelectionMoreConfirm, ProductCommentQuestion, 
             ProductCommentConfirm, AddressStreetConfirm, AddressSuburbConfirm, AddressPostCodeConfirm, AddressCorrectConfirm, DeliveryCostOkConfirm, NoDeliveryPickupConfirm,
             RecieveTimeConfirm, RecieveTimeLaterConfirm}

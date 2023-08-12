@@ -16,6 +16,7 @@ using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using static Pekkish.PointOfSale.Api.Models.Wati.Constants;
 using static System.Net.Mime.MediaTypeNames;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Pekkish.PointOfSale.Api.Services
 {
@@ -873,7 +874,7 @@ namespace Pekkish.PointOfSale.Api.Services
                             else
                             {
                                 //Set Status 
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                                 //Send Message Add More Products
                                 await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
@@ -917,7 +918,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
                             case REPLY_NO:
                                 //Set Status 
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                                 //Send Message Add More Products
                                 await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
@@ -936,7 +937,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         _context.SaveChanges();
 
                         //Set Status 
-                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                         //Send Message Add More Products
                         await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
@@ -979,7 +980,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                     else
                                     {
                                         //Set Status 
-                                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                                         //Send Message Add More Products
                                         await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
@@ -1051,7 +1052,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                             else
                                             {
                                                 //Set Status 
-                                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                                                 //Send Message Add More Products
                                                 await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
@@ -1100,7 +1101,7 @@ namespace Pekkish.PointOfSale.Api.Services
                                     // All Extras for product selected
 
                                     //Set Status 
-                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                                    await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                                     //Send Message Add More Products
                                     await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
@@ -1117,7 +1118,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         #endregion
                         break;
 
-                    case (int)WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm:
+                    case (int)WatiFoodOrderStatusEnum.CheckoutHoldingStatus:
                         #region Product More Checkout Confirm
                         switch (messageReply)
                         {
@@ -1169,7 +1170,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
                                 if (result.success)
                                 {
-                                    await MessageOrderSaved(convo.WaId, result.orderId);
+                                    await MessageOrderSaved(convo.WaId, order, tenant, result.orderId);
                                 }
                                 else
                                 {
@@ -1195,7 +1196,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         {
                             case REPLY_ASAP:
                                 //Set Status - Checkout Holding Status
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                                 //Send Message Checkout Confirm
                                 await MessageFoodOrderCheckOutConfirm(convo.WaId, order);
@@ -1211,7 +1212,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
                             case REPLY_BACK_TO_CART:
                                 //Set status to Product More Checkout Confirm
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                                 //Send Message Product More Checkout Confirm
                                 await MessageFoodOrderMoreProductsConfirmation(convo.WaId, product, order);
@@ -1289,7 +1290,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         _context.SaveChanges();
 
                         //Set Status Checkout Holding
-                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                        await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                         //Send Message Checkout Confirm (Later)
                         await MessageFoodOrderCheckOutConfirm(convo.WaId, order);                        
@@ -1316,7 +1317,7 @@ namespace Pekkish.PointOfSale.Api.Services
 
                             case REPLY_NO:
                                 //Set Status to Category Selection
-                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.ProductMoreCheckoutConfirm);
+                                await FoodOrderStatusSet(order.Id, WatiFoodOrderStatusEnum.CheckoutHoldingStatus);
 
                                 //Send Message Add More Products (Armand Van Helden REMIX)
                                 await MessageFoodOrderMoreProductsConfirmationRemixReplyNo(convo.WaId, order);
@@ -2827,14 +2828,52 @@ namespace Pekkish.PointOfSale.Api.Services
 
             var result = await _wati.InteractiveButtonsMessageTextSend(whatsappNumber, messageText);
         }
-        private async Task MessageOrderSaved(string whatsappNumber, int orderId)
+        private async Task MessageOrderSaved(string whatsappNumber, AppWatiOrder order, AppTenantInfo tenant, int posOrderId)
         {
             string message = "";
-            message += "Your order has been submitted for processing. You will be notified shortly with the vendor's response";
-            message += "\r\n";
-            message += "\r\n";
-            message += $"Your order number is {orderId}";
+            var posOrder = _context.AppOrders.Single(x => x.Id == posOrderId);
+            var location = _context.AppLocations.Single(x => x.Id == posOrder.LocationId);
+            var whatsApp = (location.WhatsApp.IsNullOrEmpty()) ? _watiConfig.DefaultWhatsappNumber : location.WhatsApp;
 
+            message += $"Your order has been submitted to {tenant.Name} for processing. Your order number is {posOrderId}";
+            message += "\r\n";
+            message += "\r\n";
+
+            //Check Delivery Require EFT
+            if (tenant.IsWhatsAppEftBeforeApprove && order.OrderFulfillmentId == (int)PosFulfillmentTypeEnum.Delivery)
+            {
+                message += $"{tenant.Name} requires an EFT payment before processing your delivery order. The banking details are:";
+                message += "\r\n";
+                message += "\r\n";
+
+                message += $"Bank: {tenant.BankName}";
+                message += "\r\n";
+
+                if (!tenant.BankAccountType.IsNullOrEmpty())
+                {
+                    message += $"Account Type: {tenant.BankName}";
+                    message += "\r\n";
+                }
+
+                if (!tenant.BankBranchCode.IsNullOrEmpty())
+                {
+                    message += $"Branch Code: {tenant.BankBranchCode}";
+                    message += "\r\n";
+                }
+
+                message += $"Account Number: {tenant.BankAccountNumber}";
+                message += "\r\n";
+                message += "\r\n";
+
+                message += $"Please send your payment confirmation to the vendor directly via  https://wa.me/{whatsApp}/?text=Order_{posOrderId}:";
+            }
+            else
+            {
+                message += $"You will be notified shortly with the vendor's response.";
+                message += "\r\n";
+                message += "\r\n";
+            }
+            
             await _wati.SessionMessageSend(whatsappNumber, message);
         }
         #endregion

@@ -33,6 +33,8 @@ public partial class AppTenantInfo
 
     public bool IsWhatsAppPreorder { get; set; }
 
+    public bool IsWhatsAppEftBeforeApprove { get; set; }
+
     public string? LabelBrand { get; set; }
 
     public string? LabelBrandPlural { get; set; }
@@ -40,6 +42,12 @@ public partial class AppTenantInfo
     public string? LabelCategory { get; set; }
 
     public string? LabelCategoryPlural { get; set; }
+
+    public string? BankName { get; set; }
+
+    public string? BankBranchCode { get; set; }
+    public string? BankAccountNumber { get; set; }
+    public string? BankAccountType { get; set; }
 
     public virtual ICollection<AppWatiOrder> AppWatiOrders { get; } = new List<AppWatiOrder>();
 }

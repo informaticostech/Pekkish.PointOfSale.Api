@@ -21,6 +21,8 @@ public partial class AppLocation
 
     public string? EmailAddress { get; set; }
 
+    public string? WhatsApp { get; set; }
+
     public string? PrintPassPhrase { get; set; }
 
     public string? PrintServerUrl { get; set; }
