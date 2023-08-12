@@ -2865,13 +2865,15 @@ namespace Pekkish.PointOfSale.Api.Services
                 message += "\r\n";
                 message += "\r\n";
 
-                message += $"Please send your payment confirmation to the vendor directly via  https://wa.me/{whatsApp}/?text=Order_{posOrderId}:";
+                message += $"Please send your payment confirmation to {tenant.Name} directly via  https://wa.me/{whatsApp}/?text=Order_{posOrderId}:";
             }
             else
             {
                 message += $"You will be notified shortly with the vendor's response.";
                 message += "\r\n";
                 message += "\r\n";
+
+                message += $"To follow up with this order, please message {tenant.Name} directly via https://wa.me/{whatsApp}/?text=Order_{posOrderId}:";
             }
             
             await _wati.SessionMessageSend(whatsappNumber, message);
