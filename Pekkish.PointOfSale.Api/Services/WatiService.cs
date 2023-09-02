@@ -31,7 +31,7 @@ namespace Pekkish.PointOfSale.Api.Services
         private readonly WatiConfig _watiConfig;
         private readonly PointOfSaleContext _context;
         private readonly IPointOfSaleService _pointOfSaleService;
-        private readonly object whatsappNumber;
+        //private readonly object whatsappNumber;
 
         public WatiService(PointOfSaleContext context, IPointOfSaleService pointOfSaleService, IOptions<WatiConfig> watiConfig)
         {            
@@ -67,11 +67,11 @@ namespace Pekkish.PointOfSale.Api.Services
                 var savedMessage = await MessageReceiveSave(message);
 
                 //Restrict Access                
-                var isOrderFood = false;
-                var watiUser = _context.AppWatiUsers.SingleOrDefault(x => x.WaId == message.WaId);
+                var isOrderFood = true;
+                //var watiUser = _context.AppWatiUsers.SingleOrDefault(x => x.WaId == message.WaId);
 
-                if (watiUser != null)
-                    isOrderFood = true;
+                //if (watiUser != null)
+                //    isOrderFood = true;
 
                 //Only do automated when there is not a current operator assigned
                 if (message.AssignedId == null)

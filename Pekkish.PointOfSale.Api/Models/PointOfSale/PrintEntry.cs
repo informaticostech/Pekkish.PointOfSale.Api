@@ -2,7 +2,7 @@
 {
     public class PrintEntry
     {
-        public string type { get; set; }
+        public string type { get; set; } = string.Empty;
         public string content { get; set; } = string.Empty;
         public int bold { get; set; }
         public int align { get; set; }
