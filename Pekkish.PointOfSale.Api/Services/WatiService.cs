@@ -159,7 +159,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         convo = conversationActiveList[0];
 
                         //Restart
-                        if (messageReply == REPLY_RESTART)
+                        if (messageReply.ToLower() == REPLY_RESTART)
                         {
                             await ConversationCancel(convo.Id);
 
@@ -176,7 +176,7 @@ namespace Pekkish.PointOfSale.Api.Services
                         }
 
                         //Help
-                        if (messageReply == REPLY_HELP)
+                        if (messageReply.ToLower() == REPLY_HELP)
                         {
                             //Cancel conversation
                             await ConversationCancel(convo.Id);
