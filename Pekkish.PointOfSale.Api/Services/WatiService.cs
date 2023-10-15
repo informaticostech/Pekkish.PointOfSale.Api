@@ -124,6 +124,7 @@ namespace Pekkish.PointOfSale.Api.Services
                             else
                             {
                                 //TODO: Location Selection
+                                order.LocationId = locationList[0].Id;
                             }
                             _context.SaveChanges();
 
