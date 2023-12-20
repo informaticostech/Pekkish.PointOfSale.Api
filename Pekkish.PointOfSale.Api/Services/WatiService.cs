@@ -369,11 +369,16 @@ namespace Pekkish.PointOfSale.Api.Services
 
                 if (order.WaId != null)
                 {
-                    watiUser = _context.AppWatiUsers.Single(x => x.WaId == message.WaId);
+                    watiUser = _context.AppWatiUsers.SingleOrDefault(x => x.WaId == message.WaId);
+
+                    if (watiUser == null)
+                    {
+                        watiUser = await WatiUserCreate(message);
+                    }
                 }
                 else
                 {
-                    watiUser = new AppWatiUser();
+                    watiUser = await WatiUserCreate(message);
                 }
 
                 #endregion
@@ -1661,7 +1666,24 @@ namespace Pekkish.PointOfSale.Api.Services
 
                 _context.SaveChanges();
             });
-        }        
+        }
+        private async Task<AppWatiUser> WatiUserCreate(SessionMessageReceiveDto message)
+        {
+            return await Task.Run(() =>
+            {
+                AppWatiUser result = new AppWatiUser();
+
+                result.Name = message.SenderName;
+                result.WaId = message.WaId;
+                result.CreationTime = DateTime.Now;
+                result.IsDeleted = false;
+
+                _context.AppWatiUsers.Add(result);
+                _context.SaveChanges();
+
+                return result;
+            });
+        }
         #endregion
 
         #region WhatsApp Message Send
